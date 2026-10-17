@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kama Ledger</title>
+    <meta name="description" content="Offline Dofus profit tracker" />
+  </head>
+  <body>
+    <main>
+      <header class="app-header">
+        <div class="brand-lockup">
+          <img src="%BASE_URL%assets/kama-ledger.svg" alt="" width="48" height="48">
+          <div><h1>Kama Ledger</h1><p>Local-first Dofus economy workspace</p></div>
+        </div>
+        <div class="profile-tools">
+          <span id="adaptive-message">Your workflow stays on this device.</span>
+          <button class="quiet-button" id="reset-profile" type="button" title="Clear locally learned workflow preferences">Reset</button>
+        </div>
+        <div class="desktop-capture-controls" aria-label="Screen capture controls">
+          <button class="btn" id="global-share-toggle" type="button" onclick="toggleShare()">Start screen share</button>
+          <button class="btn" id="global-auto-toggle" type="button" onclick="toggleAuto()" disabled>Auto capture off</button>
+        </div>
+      </header>
+      <div class="app-navigation">
+        <div class="workflow-strip"><span class="eyebrow">YOUR WORKFLOW</span><div id="workflow-shortcuts"><span class="mu">Your frequent tools will appear here as you work.</span></div></div>
+        <nav id="nav" aria-label="Workspace sections"></nav>
+      </div>
+
+      <section id="t-log">
+        <p class="mu">Paste chat lines. Wrapped lines are joined, "Banque : +" lines count as income, unreadable lines are flagged.</p>
+        <textarea id="log" placeholder="[20:47] 1 x [Galet Solaire] (168 998 kamas)"></textarea>
+        <div class="row"><button class="btn" onclick="runLog()">Calculate</button><span id="logres"></span></div>
+        <div id="logout"></div>
+      </section>
+
+      <section id="t-cap">
+        <p class="mu">Share a game screen or window, select the chat region, and capture when needed. OCR reads the shared pixels and separates bank-credit sales from item purchases. Capture does not send clicks or keyboard input to the game. You can also paste or drop screenshots here.</p>
+        <div class="row">
+          <button class="btn primary-button" onclick="shareScreen()">Share screen or window</button>
+          <button class="btn stop-button" id="stop-share" onclick="stopShare()" type="button" hidden>Stop sharing</button>
+          <button class="btn" id="game-interaction" type="button" aria-pressed="false" disabled>Game input: off</button>
+          <button class="btn" id="rgbtn" onclick="drawMode()">Set region</button>
+          <button class="btn" id="autobtn" onclick="toggleAuto()">Auto capture: off</button>
+          <button class="btn" onclick="snap()">Snap now</button>
+          <span class="mu">Esc to capture</span>
+          <label class="btn">Add images…<input type="file" id="fi" accept="image/*" multiple hidden></label>
+        </div>
+        <p id="capture-status" class="capture-status" aria-live="polite">Not sharing a screen or window.</p>
+        <p id="interaction-status" class="interaction-status" hidden>Manual input only: clicks on this preview and key presses while Kama Ledger is focused are sent to the selected game window.</p>
+        <div id="capture-picker" class="capture-picker" hidden>
+          <div class="capture-picker-panel" role="dialog" aria-modal="true" aria-labelledby="capture-picker-title">
+            <header class="capture-picker-header">
+              <strong id="capture-picker-title">Choose what to share</strong>
+              <button class="btn picker-close" id="capture-picker-close" type="button" aria-label="Close">×</button>
+            </header>
+            <div class="picker-tabs" role="tablist" aria-label="Capture source type">
+              <button class="picker-tab on" id="picker-screens" type="button" role="tab" aria-selected="true">Entire screen</button>
+              <button class="picker-tab" id="picker-windows" type="button" role="tab" aria-selected="false">Window</button>
+            </div>
+            <div id="capture-sources" class="capture-sources" role="listbox" aria-label="Available capture sources"></div>
+            <p id="capture-empty" class="mu" hidden>No sources of this type are available.</p>
+            <div class="capture-picker-footer">
+              <span class="mu">Only the selected screen or window will be captured.</span>
+              <div class="row">
+                <button class="btn" id="capture-cancel" type="button">Cancel</button>
+                <button class="btn" id="capture-share" type="button" disabled>Share</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
+        <p class="mu">Queue: <b id="qn">0</b> capture(s)</p>
+        <div id="q" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <div class="row"><button class="btn" onclick="readAll()">Read all (OCR)</button><button class="btn" onclick="clearQ()">Clear queue</button><span id="ocrst" class="mu"></span></div>
+        <div id="transaction-preview" class="transaction-preview" aria-live="polite"></div>
+        <textarea id="ocrtext" placeholder="The OCR result appears here. Fix anything wrong, then Calculate."></textarea>
+        <div id="ocrwarn" class="bad"></div>
+        <div class="row"><button class="btn" onclick="toLog()">Calculate in Log tab</button></div>
+      </section>
+
+      <section id="t-db">
+        <nav class="db-subnav" aria-label="Database views">
+          <button class="db-subtab on" id="db-captures-tab" type="button" aria-selected="true">Captures</button>
+          <button class="db-subtab" id="db-ledger-tab" type="button" aria-selected="false">Ledger History</button>
+        </nav>
+        <div id="db-captures-view">
+        <p class="mu">Every capture is saved here (in this browser, on this computer) with its time and the text read from it. Deleting from the Capture queue does not delete it here.</p>
+        <div class="row"><span id="dbinfo"></span><label style="max-width:150px">Show<select id="dbf"><option value="all">all</option><option value="unread">not read yet</option><option value="read">read</option></select></label></div>
+        <div class="row">
+          <button class="btn" onclick="dbSel(true)">Select all</button>
+          <button class="btn" onclick="dbSel(false)">Select none</button>
+          <button class="btn" onclick="dbToQueue()">Send selected to Capture queue</button>
+          <button class="btn" onclick="dbDelSel()">Delete selected</button>
+          <button class="btn" onclick="dbExport()">Export JSON</button>
+          <label class="mu"><input type="checkbox" id="dbimg" style="width:auto"> include images</label>
+        </div>
+        <div id="dbgrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        </div>
+        <div id="db-ledger-view" hidden>
+          <p class="mu">Purchases and bank-recorded sales recognized by OCR are saved locally here.</p>
+          <div id="ledger-summary" class="ledger-summary"></div>
+          <div class="table-scroll"><table id="ledger-table" class="ledger-table"><thead><tr><th>Time</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Source</th></tr></thead><tbody></tbody></table></div>
+          <p id="ledger-empty" class="mu" hidden>No recognized sales or purchases yet. Run Read all (OCR) on captures.</p>
+        </div>
+      </section>
+
+      <div id="dbmodal" style="display:none;position:fixed;inset:0;background:#000c;z-index:9;overflow:auto;padding:20px" onclick="this.style.display='none'">
+        <div style="max-width:900px;margin:0 auto" onclick="event.stopPropagation()">
+          <img id="dbmimg" style="max-width:100%;display:block;border:1px solid var(--bd)">
+          <pre id="dbmtxt" style="white-space:pre-wrap;background:var(--card);padding:10px;font-size:12px"></pre>
+          <button class="btn" onclick="$('dbmodal').style.display='none'">Close</button>
+        </div>
+      </div>
+
+      <section id="t-rec">
+        <p class="mu">For each resource: enter what you paid, the units, and the Pépites the recycler panel shows.</p>
+        <div class="row">
+          <label>Pépite 1000-lot listing price<input id="pl" value="392986"></label>
+          <label>Tax rounding<select id="rnd"><option value="nearest">nearest</option><option value="ceil">up</option></select></label>
+          <label>Safety margin %<input id="mg" value="10"></label>
+          <span>Net per Pépite: <b id="net">-</b></span>
+        </div>
+        <table id="rt"><thead><tr><th>Item</th><th>Units</th><th>Paid (total)</th><th>Pépites shown</th><th>Value</th><th>Profit</th><th>Cost / Pépite</th><th>Buy-stop / unit</th><th>Relist total</th></tr></thead><tbody></tbody></table>
+        <div class="row"><button class="btn" onclick="addRow()">+ row</button><span id="rsum" class="big"></span></div>
+      </section>
+
+      <section id="t-tax">
+        <div class="row"><label>Listing price (2m1, 50kk, 392 986)<input id="lp" value="392986"></label><label>Your total cost (optional)<input id="lc" value=""></label></div>
+        <p>Tax paid when you list: <b id="tx1">-</b> &nbsp; Net if sold: <b id="tx2">-</b></p>
+        <p>Break-even listing price: <b id="tx3">-</b> &nbsp; Profit if sold: <b id="tx4">-</b></p>
+        <p class="mu">Tax is charged when you list, even if it does not sell. Rounding mode: see the Recycling tab.</p>
+      </section>
+
+      <section id="t-bri">
+        <p class="mu">runes = (3 x jet x stat weight x level / 200 + 1) / rune weight x coefficient / 100. Confirmed weights only: Vi 0.2/1, Fo, Ine, Age 1/1, Sa 3/3, Do 20/20, Prospe 3/3. Edit freely.</p>
+        <div class="row"><label>Item from data (optional)<input id="bi" list="bdl" placeholder="e.g. Amulette d'Oshimo"></label><datalist id="bdl"></datalist><label>Item level<input id="bl" value="176"></label><label>Coefficient %<input id="bc" value="100"></label><label>Item market price (optional)<input id="bp" value=""></label></div>
+        <table id="bt"><thead><tr><th>Stat</th><th>Jet</th><th>Stat weight</th><th>Rune weight</th><th>Rune price</th><th>Runes</th><th>Value</th></tr></thead><tbody></tbody></table>
+        <div class="row"><button class="btn" onclick="addB()">+ stat</button><span id="bsum" class="big"></span></div>
+        <p id="bmin" class="mu"></p><p id="bnote" class="mu"></p>
+      </section>
+
+      <section id="t-craft">
+        <p class="mu">Type an item name (needs the Data tab loaded). Prices you type are remembered per ingredient in this browser.</p>
+        <div class="row"><label>Item to craft<input id="cq" list="cdl" autocomplete="off"></label><datalist id="cdl"></datalist><label>How many crafts<input id="cn" value="1"></label><label>Selling price per item (2m1, 50kk...)<input id="cs"></label></div>
+        <table id="ct"><thead><tr><th>Ingredient</th><th>Qty / craft</th><th>Total qty</th><th>Price / unit</th><th>Cost</th></tr></thead><tbody></tbody></table>
+        <p id="cres"></p>
+      </section>
+
+      <section id="t-data">
+        <p class="mu">Load your Datafus data once: the .zip, the Datafus-master folder, or several of its files. It is read here in the browser (nothing is uploaded), only names, levels, types, recipes and stats are kept, and the result stays saved in this browser. Datafus stops at Dofus 2 (December 2024), so newer items or changed recipes can be missing: check anything surprising in the game.</p>
+        <div class="row"><label class="btn">Choose zip / files<input id="dfile" type="file" multiple accept=".zip,.json" hidden></label><label class="btn">Choose a folder<input id="dfold" type="file" webkitdirectory hidden></label><button class="btn" onclick="dataExport()">Export compact file</button><button class="btn" onclick="dataClear()">Remove saved data</button></div>
+        <p id="dstat" class="mu">No data loaded.</p>
+        <div class="row"><label>Search an item<input id="dq" autocomplete="off"></label></div>
+        <div id="dres"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

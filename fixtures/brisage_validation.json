@@ -1,0 +1,139 @@
+{
+  "formula": "runes=(3*jet*stat_weight*level/200+1)/rune_weight*coef/100; observed = floor or ceil of expected",
+  "tolerance": 1,
+  "points": [
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Vitalité",
+      "jet": 216,
+      "stat_weight": 0.2,
+      "rune_weight": 1,
+      "observed": 317,
+      "expected": 316.38
+    },
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Force",
+      "jet": 49,
+      "stat_weight": 1,
+      "rune_weight": 1,
+      "observed": 359,
+      "expected": 358.49
+    },
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Intelligence",
+      "jet": 48,
+      "stat_weight": 1,
+      "rune_weight": 1,
+      "observed": 351,
+      "expected": 351.23
+    },
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Agilité",
+      "jet": 48,
+      "stat_weight": 1,
+      "rune_weight": 1,
+      "observed": 352,
+      "expected": 351.23
+    },
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Sagesse",
+      "jet": 26,
+      "stat_weight": 3,
+      "rune_weight": 3,
+      "observed": 190,
+      "expected": 189.68
+    },
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Dommages Feu",
+      "jet": 10,
+      "stat_weight": 20,
+      "rune_weight": 20,
+      "observed": 73,
+      "expected": 72.74
+    },
+    {
+      "item": "Collier du YeCh'Ti",
+      "level": 176,
+      "coefficient": 275,
+      "stat": "Prospection",
+      "jet": 7,
+      "stat_weight": 3,
+      "rune_weight": 3,
+      "observed": 52,
+      "expected": 51.74
+    },
+    {
+      "item": "Mitaine du YeCh'Ti",
+      "level": 178,
+      "coefficient": 225,
+      "stat": "Force",
+      "jet": 43,
+      "stat_weight": 1,
+      "rune_weight": 1,
+      "observed": 261,
+      "expected": 260.57
+    },
+    {
+      "item": "Mitaine du YeCh'Ti",
+      "level": 178,
+      "coefficient": 225,
+      "stat": "Intelligence",
+      "jet": 42,
+      "stat_weight": 1,
+      "rune_weight": 1,
+      "observed": 255,
+      "expected": 254.56
+    },
+    {
+      "item": "Mitaine du YeCh'Ti",
+      "level": 178,
+      "coefficient": 225,
+      "stat": "Agilité",
+      "jet": 41,
+      "stat_weight": 1,
+      "rune_weight": 1,
+      "observed": 249,
+      "expected": 248.56
+    },
+    {
+      "item": "Mitaine du YeCh'Ti",
+      "level": 178,
+      "coefficient": 225,
+      "stat": "Sagesse",
+      "jet": 13,
+      "stat_weight": 3,
+      "rune_weight": 3,
+      "observed": 79,
+      "expected": 78.85
+    },
+    {
+      "item": "Mitaine du YeCh'Ti",
+      "level": 178,
+      "coefficient": 225,
+      "stat": "Dommages Feu",
+      "jet": 15,
+      "stat_weight": 20,
+      "rune_weight": 20,
+      "observed": 90,
+      "expected": 90.22
+    }
+  ],
+  "note": "stack-to-stat matching comes from reading the Concassage screenshots; Agilité 352 vs Intelligence 351 is interchangeable"
+}

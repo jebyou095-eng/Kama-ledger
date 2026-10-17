@@ -1,0 +1,61 @@
+{
+  "runes.txt": {
+    "total": 1074717,
+    "lines": 4,
+    "note": "no timestamps in this capture"
+  },
+  "rune_astrale.txt": {
+    "total": 3005012,
+    "lines": 9
+  },
+  "talisman_batch.txt": {
+    "total": 142546,
+    "lines": 6
+  },
+  "edge_cases.txt": {
+    "total": 234787,
+    "lines": 3,
+    "sales_logged": [
+      {
+        "amount": 1839899,
+        "item": "Rune Ta Do Per So"
+      }
+    ],
+    "note": "line 3 wraps onto the next row and must be joined; Banque line is income, not cost"
+  },
+  "tax_rounding": [
+    {
+      "list": 392986,
+      "tax": 7860
+    },
+    {
+      "list": 400994,
+      "tax": 8020
+    },
+    {
+      "list": 28994,
+      "tax": 580
+    },
+    {
+      "list": 2899,
+      "tax": 58
+    },
+    {
+      "list": 296989,
+      "tax": 5940
+    }
+  ],
+  "net_pepite_from_listing_392986": 385.126,
+  "observed_yields_per_unit": {
+    "Moustache précieuse": 0.0875,
+    "Dent de Wabbit": 0.0935733,
+    "Dard de Morfrelon": 0.58058,
+    "Éclat Obscur": 1.83,
+    "Biscuit de chance": 1.5863,
+    "Relique du Tynril": 0.6
+  },
+  "lots_1000.txt": {
+    "total": 89997,
+    "lines": 3
+  }
+}

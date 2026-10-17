@@ -1,0 +1,54 @@
+{
+  "name": "kama-ledger",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Offline Dofus profit tracker",
+  "author": "Kama Ledger",
+  "main": "electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "start": "npm run build && electron .",
+    "desktop": "npm run build && electron .",
+    "build:icon": "node scripts/generate-icon.js",
+    "package:win": "npm run build:icon && npm run build && electron-builder --win nsis --publish never",
+    "package:portable": "npm run build:icon && npm run build && electron-builder --win portable --publish never",
+    "test": "node tests/run-tests.cjs && node tests/transactions.cjs"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.0.0",
+    "vite": "^5.4.10"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2"
+  },
+  "build": {
+    "appId": "com.kama-ledger.app",
+    "productName": "Kama Ledger",
+    "directories": {
+      "output": "release/windows"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/kama-ledger.ico",
+      "target": ["nsis"],
+      "artifactName": "Kama-Ledger-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Kama Ledger",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
