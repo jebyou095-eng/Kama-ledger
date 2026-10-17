@@ -223,3 +223,18 @@ td input { padding: 4px 6px; }
   .capture-picker-footer { align-items: flex-start; flex-direction: column; }
   .capture-picker-footer .row { align-self: flex-end; }
 }
+
+.hotkey-row input[readonly] { max-width: 230px; font-weight: 600; }
+.hotkey-row input.recording { border-color: var(--gold); background: #faf5e9; }
+.check-inline { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-width: 0; }
+.check-inline input { width: auto; }
+.review-table { width: 100%; border-collapse: collapse; margin: 12px 0 7px; }
+.review-table th, .review-table td { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--bd); vertical-align: middle; }
+.review-table input, .review-table select, .ledger-table input, .ledger-table select { width: 100%; min-width: 0; padding: 4px 6px; font: inherit; }
+.review-table input.num, .ledger-table input.num { text-align: right; }
+.review-table tr.sale td:first-child, .ledger-table tr.ledger-sale td { border-left: 3px solid #3b9360; }
+.review-table tr.purchase td:first-child, .ledger-table tr.ledger-purchase td { border-left: 3px solid #c75a50; }
+.review-table .match { font-size: 12px; color: var(--mu); white-space: nowrap; }
+.review-table .match.bad { color: var(--bad); }
+.row-button { padding: 2px 8px; border: 1px solid var(--bd); border-radius: 4px; background: transparent; color: var(--mu); cursor: pointer; font: inherit; }
+.edited-tag { margin-left: 6px; font-size: 10px; color: var(--gold); }

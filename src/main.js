@@ -1,6 +1,6 @@
 import './style.css';
 import JSZip from 'jszip';
-import { analyzePanel, mergeLedgerHistory, normLine as normalizeTransactionLine, transactionLines } from './transactions.js';
+import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
 /*CORE*/
 function num(s) {
@@ -503,29 +503,115 @@ function showInputResult(result) {
 function showInputError(error) {
   $('interaction-status').textContent = 'Input error: ' + error.message;
 }
-function renderTransactionPreview() {
-  var preview = $('transaction-preview');
-  var transactions = transactionLines($('ocrtext').value.split('\n'));
-  preview.replaceChildren();
-  transactions.forEach(function (transaction) {
-    var line = document.createElement('div');
-    line.className = 'transaction-line ' + transaction.type;
-    var kind = document.createElement('strong');
-    kind.textContent = transaction.type === 'sale' ? 'SOLD' : 'BOUGHT';
-    var text = document.createElement('span');
-    text.textContent = transaction.item + (transaction.quantity ? ' x' + transaction.quantity : '');
-    var amount = document.createElement('b');
-    amount.textContent = (transaction.type === 'sale' ? '+' : '-') + ' ' + F(transaction.amount) + ' kamas';
-    line.append(kind, text, amount);
-    preview.appendChild(line);
-  });
-  if (!transactions.length && $('ocrtext').value.trim()) {
-    var empty = document.createElement('p');
-    empty.className = 'mu';
-    empty.textContent = 'No sale or purchase lines recognized.';
-    preview.appendChild(empty);
-  }
+var reviewRows = [];
+var reviewSourceIds = null;
+var lastSavedKeys = [];
+function setReview(transactions, fresh) {
+  reviewRows = transactions.map(function (transaction) { return Object.assign({}, transaction); });
+  if (fresh) lastSavedKeys = [];
+  renderReview();
 }
+function syncReviewText() {
+  $('ocrtext').value = reviewRows.map(transactionToLine).join('\n');
+  $('review-status').textContent = reviewRows.length
+    ? reviewRows.length + ' line(s). Edit anything wrong, then save.'
+    : 'Nothing left to save.';
+}
+function matchInfo(name) {
+  if (!P) return { text: '', bad: false };
+  var found = pickItem(P, name);
+  if (found) return { text: 'Lv ' + found[2] + ' ' + (P.idx.types[found[3]] || ''), bad: false };
+  var guess = suggest(P, name);
+  return { text: guess ? 'not in data' : 'not in data', bad: true, guess: guess };
+}
+function renderReview() {
+  var box = $('transaction-preview');
+  box.replaceChildren();
+  $('review-actions').hidden = !reviewRows.length;
+  if (!reviewRows.length) {
+    if ($('ocrtext').value.trim()) {
+      var empty = document.createElement('p');
+      empty.className = 'mu';
+      empty.textContent = 'No sale or purchase lines recognized.';
+      box.appendChild(empty);
+    }
+    return;
+  }
+  var table = document.createElement('table');
+  table.className = 'review-table';
+  var head = table.createTHead().insertRow();
+  ['Type', 'Item', 'Qty', 'Amount (kamas)', 'Check', ''].forEach(function (label) {
+    var th = document.createElement('th');
+    th.textContent = label;
+    head.appendChild(th);
+  });
+  var body = table.createTBody();
+  reviewRows.forEach(function (row, index) {
+    var tr = body.insertRow();
+    tr.className = row.type;
+    var typeCell = tr.insertCell(), type = document.createElement('select');
+    [['purchase', 'Bought'], ['sale', 'Sold']].forEach(function (option) {
+      var o = document.createElement('option');
+      o.value = option[0]; o.textContent = option[1]; type.appendChild(o);
+    });
+    type.value = row.type;
+    type.addEventListener('change', function () { row.type = type.value; syncReviewText(); renderReview(); });
+    typeCell.appendChild(type);
+
+    var itemCell = tr.insertCell(), item = document.createElement('input');
+    item.value = row.item; item.setAttribute('list', 'review-names'); item.setAttribute('aria-label', 'Item name');
+    var matchCell = document.createElement('td');
+    function paintMatch() {
+      var info = matchInfo(row.item);
+      matchCell.replaceChildren();
+      matchCell.className = 'match' + (info.bad ? ' bad' : '');
+      matchCell.append(info.text);
+      if (info.guess) {
+        var use = document.createElement('button');
+        use.type = 'button'; use.className = 'row-button'; use.textContent = 'use "' + info.guess + '"';
+        use.addEventListener('click', function () { row.item = info.guess; syncReviewText(); renderReview(); });
+        matchCell.append(' ', use);
+      }
+    }
+    item.addEventListener('input', function () {
+      row.item = item.value;
+      var list = $('review-names');
+      list.replaceChildren();
+      if (P) searchItems(P, item.value, 15).forEach(function (found) { var o = document.createElement('option'); o.value = found[1]; list.appendChild(o); });
+      syncReviewText(); paintMatch();
+    });
+    itemCell.appendChild(item);
+    var qtyCell = tr.insertCell(), qty = document.createElement('input');
+    qty.className = 'num'; qty.value = row.quantity || ''; qty.setAttribute('aria-label', 'Quantity'); qty.inputMode = 'numeric';
+    qty.addEventListener('input', function () { var n = Number(String(qty.value).replace(/\D/g, '')); row.quantity = n > 0 ? n : null; syncReviewText(); });
+    qtyCell.appendChild(qty);
+    var amountCell = tr.insertCell(), amount = document.createElement('input');
+    amount.className = 'num'; amount.value = row.amount; amount.setAttribute('aria-label', 'Amount in kamas'); amount.inputMode = 'numeric';
+    amount.addEventListener('input', function () { var n = Number(String(amount.value).replace(/\D/g, '')); row.amount = isFinite(n) ? n : 0; syncReviewText(); });
+    amountCell.appendChild(amount);
+    tr.appendChild(matchCell);
+    var delCell = tr.insertCell(), del = document.createElement('button');
+    del.type = 'button'; del.className = 'row-button'; del.textContent = '×'; del.title = 'Remove this line'; del.setAttribute('aria-label', 'Remove this line');
+    del.addEventListener('click', function () { reviewRows.splice(index, 1); syncReviewText(); renderReview(); });
+    delCell.appendChild(del);
+    paintMatch();
+  });
+  box.appendChild(table);
+}
+function renderTransactionPreview() { reviewSourceIds = null; setReview(transactionLines($('ocrtext').value.split('\n')), true); }
+async function saveReview() {
+  if (!reviewRows.length) return;
+  var ids = reviewSourceIds || Q.map(function (capture) { return capture.id; }).filter(function (id) { return id != null; });
+  var existing = await metaGet('ledger-history') || [];
+  if (lastSavedKeys.length) existing = existing.filter(function (entry) { return lastSavedKeys.indexOf(entry.key) < 0; });
+  var before = existing.map(function (entry) { return entry.key; });
+  ledgerHistory = mergeLedgerHistory(existing, reviewRows, ids, Date.now());
+  lastSavedKeys = ledgerHistory.map(function (entry) { return entry.key; }).filter(function (key) { return before.indexOf(key) < 0; });
+  await metaPut('ledger-history', ledgerHistory);
+  renderLedgerHistory();
+  $('review-status').textContent = 'Saved ' + reviewRows.length + ' line(s) to the ledger. You can keep editing and save again to replace them.';
+}
+$('review-save').addEventListener('click', saveReview);
 $('ocrtext').addEventListener('input', renderTransactionPreview);
 $('show-unclassified').addEventListener('click', function () {
   $('unclassified-list').hidden = !$('unclassified-list').hidden;
@@ -554,7 +640,12 @@ function renderUnclassified() {
       if (!select.value) return;
       try {
         var analyzed = analyzePanel(capture.lines, select.value);
-        if (analyzed.panel === 'chat') await saveLedgerTransactions(analyzed.transactions, capture.sourceIds);
+        if (analyzed.panel === 'chat') {
+          $('ocrtext').value = analyzed.transactions.map(function (transaction) { return transaction.line; }).join('\n');
+          renderTransactionPreview();
+          reviewSourceIds = capture.sourceIds;
+          show('cap');
+        }
         else if (analyzed.panel === 'recipes') {
           var prior = await metaGet('recipe-observations') || [];
           prior.push({ capturedAt: capture.createdAt, sourceIds: capture.sourceIds, ingredients: analyzed.ingredients });
@@ -621,18 +712,16 @@ function grab() {
 }
 function push(url, src) {
   var rec = { ts: Date.now(), url, text: null, src: src || 'auto' };
-  dbAdd(rec).then(function (id) {
+  return dbAdd(rec).then(function (id) {
     Q.push({ id, url });
     renderQ();
     if ($('t-db').classList.contains('on')) showDatabaseView(databaseView);
+    return id;
   });
 }
 function snap() {
   var c = grab();
   if (c) { recordAction('snap'); push(c.toDataURL('image/png'), 'snap'); } else alert('Share the game window first.');
-}
-if (window.kamaDesktopCapture) {
-  window.kamaDesktopCapture.onGlobalSnapshot(function () { snap(); });
 }
 document.addEventListener('keydown', function (event) {
   var target = event.target;
@@ -757,8 +846,7 @@ async function readAll() {
     $('ocrtext').value = panel.panel === 'chat' ? transactions.map(function (transaction) { return transaction.line; }).join('\n') : '';
     renderTransactionPreview();
     var sourceIds = Q.map(function (capture) { return capture.id; }).filter(function (id) { return id != null; });
-    if (panel.panel === 'chat') await saveLedgerTransactions(transactions, sourceIds);
-    else if (panel.panel === 'unclassified') {
+    if (panel.panel === 'unclassified') {
       unclassifiedCaptures.push({ id: Date.now(), sourceIds: sourceIds, lines: s.lines, createdAt: Date.now() });
       await metaPut('unclassified-captures', unclassifiedCaptures);
       renderUnclassified();
@@ -768,7 +856,7 @@ async function readAll() {
     $('ocrst').textContent = panel.panel === 'unclassified'
       ? 'Panel title was not recognized. Capture added to Unclassified for manual labeling.'
       : panel.panel === 'chat'
-        ? (transactions.length ? 'Chat: found ' + transactions.length + ' sale/purchase line(s). Sales are green; purchases are red.' : 'Chat recognized; no purchase or bank-credit sale lines found.')
+        ? (transactions.length ? 'Chat: found ' + transactions.length + ' sale/purchase line(s). Check them, fix anything wrong, then press Save to ledger.' : 'Chat recognized; no purchase or bank-credit sale lines found.')
         : panel.label + ' recognized. ' + (panel.ingredients ? panel.ingredients.length + ' recipe ingredient(s) found; market and other values remain unconfirmed.' : 'Panel text retained for review, not added to the trade ledger.');
   } catch (e) { $('ocrst').textContent = 'Error: ' + e.message; }
 }
@@ -846,26 +934,64 @@ function showDatabaseView(view) {
   $('db-ledger-view').hidden = captures;
   if (captures) renderDB(); else renderLedgerHistory();
 }
+function ledgerTotals() {
+  var totals = ledgerHistory.reduce(function (result, entry) {
+    result[entry.type] += Number(entry.amount) || 0;
+    return result;
+  }, { sale: 0, purchase: 0 });
+  $('ledger-summary').textContent = 'Sales: +' + F(totals.sale) + ' kamas  |  Purchases: -' + F(totals.purchase) + ' kamas  |  Net: ' + (totals.sale - totals.purchase >= 0 ? '+' : '-') + F(Math.abs(totals.sale - totals.purchase)) + ' kamas';
+}
+async function editLedger(key, patch) {
+  ledgerHistory = updateLedgerEntry(ledgerHistory, key, patch);
+  await metaPut('ledger-history', ledgerHistory);
+  ledgerTotals();
+}
 function renderLedgerHistory() {
   var rows = $('ledger-table').tBodies[0];
   if (!rows) return;
   var sorted = ledgerHistory.slice().sort(function (a, b) { return b.recordedAt - a.recordedAt; });
   rows.replaceChildren();
-  var totals = sorted.reduce(function (result, entry) {
-    result[entry.type] += Number(entry.amount) || 0;
-    return result;
-  }, { sale: 0, purchase: 0 });
-  $('ledger-summary').textContent = 'Sales: +' + F(totals.sale) + ' kamas  |  Purchases: -' + F(totals.purchase) + ' kamas';
+  ledgerTotals();
   $('ledger-empty').hidden = sorted.length > 0;
   sorted.forEach(function (entry) {
     var row = document.createElement('tr');
     row.className = entry.type === 'sale' ? 'ledger-sale' : 'ledger-purchase';
-    var cells = [entry.time || fmtT(entry.recordedAt), entry.type === 'sale' ? 'Sold' : 'Bought', entry.item, entry.quantity || '-', (entry.type === 'sale' ? '+' : '-') + ' ' + F(entry.amount) + ' kamas', entry.sourceCaptureIds && entry.sourceCaptureIds.length ? entry.sourceCaptureIds.join(', ') : 'Manual OCR'];
-    cells.forEach(function (value) {
-      var cell = document.createElement('td');
-      cell.textContent = value;
-      row.appendChild(cell);
+    function cell(node) { var td = document.createElement('td'); td.append(node); row.appendChild(td); return td; }
+    cell(entry.time || fmtT(entry.recordedAt));
+    var type = document.createElement('select');
+    [['purchase', 'Bought'], ['sale', 'Sold']].forEach(function (option) {
+      var o = document.createElement('option'); o.value = option[0]; o.textContent = option[1]; type.appendChild(o);
     });
+    type.value = entry.type;
+    type.addEventListener('change', function () { editLedger(entry.key, { type: type.value }).then(renderLedgerHistory); });
+    cell(type);
+    var item = document.createElement('input');
+    item.value = entry.item; item.setAttribute('aria-label', 'Item name');
+    item.addEventListener('change', function () {
+      if (!item.value.trim()) { item.value = entry.item; return; }
+      entry.item = item.value.trim();
+      editLedger(entry.key, { item: item.value });
+    });
+    var itemCell = cell(item);
+    if (entry.edited) { var tag = document.createElement('span'); tag.className = 'edited-tag'; tag.textContent = 'edited'; itemCell.appendChild(tag); }
+    var qty = document.createElement('input');
+    qty.className = 'num'; qty.value = entry.quantity || ''; qty.setAttribute('aria-label', 'Quantity'); qty.inputMode = 'numeric';
+    qty.addEventListener('change', function () { var n = Number(String(qty.value).replace(/\D/g, '')); editLedger(entry.key, { quantity: n > 0 ? n : null }); });
+    cell(qty);
+    var amount = document.createElement('input');
+    amount.className = 'num'; amount.value = entry.amount; amount.setAttribute('aria-label', 'Amount in kamas'); amount.inputMode = 'numeric';
+    amount.addEventListener('change', function () { var n = Number(String(amount.value).replace(/\D/g, '')); editLedger(entry.key, { amount: n }).then(function () { amount.value = n; }); });
+    cell(amount);
+    cell(entry.sourceCaptureIds && entry.sourceCaptureIds.length ? entry.sourceCaptureIds.join(', ') : 'Manual OCR');
+    var del = document.createElement('button');
+    del.type = 'button'; del.className = 'row-button'; del.textContent = '×'; del.title = 'Delete this entry'; del.setAttribute('aria-label', 'Delete this entry');
+    del.addEventListener('click', async function () {
+      if (!confirm('Delete this entry from the ledger?')) return;
+      ledgerHistory = removeLedgerEntry(ledgerHistory, entry.key);
+      await metaPut('ledger-history', ledgerHistory);
+      renderLedgerHistory();
+    });
+    cell(del);
     rows.appendChild(row);
   });
 }
@@ -1140,6 +1266,100 @@ show(st);
 
 window.$ = $;
 window.show = show;
+/* ---- capture hotkey (desktop app) ---- */
+var DEFAULT_HOTKEY = 'CommandOrControl+Shift+K';
+var hotkeyRecording = false;
+function hotkeyLabel(accelerator) { return String(accelerator || '').replace('CommandOrControl', 'Ctrl'); }
+function accelFromEvent(event) {
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].indexOf(event.key) >= 0) return null;
+  var key = event.key;
+  var names = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right' };
+  if (names[key]) key = names[key];
+  else if (key.length === 1) key = key.toUpperCase();
+  if (!/^([A-Z0-9]|F([1-9]|1\d|2[0-4])|Space|Up|Down|Left|Right|Tab|Enter|Backspace|Insert|Delete|Home|End|PageUp|PageDown)$/.test(key)) return null;
+  var mods = [];
+  if (event.ctrlKey || event.metaKey) mods.push('CommandOrControl');
+  if (event.altKey) mods.push('Alt');
+  if (event.shiftKey) mods.push('Shift');
+  if (!mods.length && !/^F\d/.test(key)) return null;
+  return mods.concat(key).join('+');
+}
+function beep() {
+  if (!$('beep').checked) return;
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.frequency.value = 880; gain.gain.value = 0.06;
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.09);
+    osc.onended = function () { ctx.close(); };
+  } catch (e) {}
+}
+function hotkeyCapture() {
+  if (!stream) { $('hotkey-status').textContent = 'Hotkey pressed, but no screen or window is being shared yet. Share the game window first.'; return Promise.resolve(null); }
+  var canvas = grab();
+  if (!canvas) { $('hotkey-status').textContent = 'The shared window has no picture yet.'; return Promise.resolve(null); }
+  recordAction('hotkey');
+  return push(canvas.toDataURL('image/png'), 'hotkey').then(function (id) {
+    beep();
+    $('hotkey-status').textContent = 'Captured' + (id != null ? ' #' + id : '') + ' at ' + new Date().toLocaleTimeString() + '. Queue: ' + Q.length;
+    return id;
+  });
+}
+async function applyHotkey(accelerator) {
+  var bridge = window.kamaDesktopCapture;
+  var result = await bridge.setHotkey(accelerator);
+  if (result && result.ok) {
+    try { localStorage.setItem('kl-hotkey', accelerator); } catch (e) {}
+    $('hotkey').value = hotkeyLabel(accelerator);
+    $('hotkey-status').textContent = 'Hotkey set to ' + hotkeyLabel(accelerator) + '. It is active while a screen or window is shared; press it in the game to capture.';
+    return true;
+  }
+  $('hotkey-status').textContent = (result && result.reason) || 'Could not set that hotkey.';
+  return false;
+}
+function initHotkey() {
+  var bridge = window.kamaDesktopCapture;
+  if (!bridge || !bridge.setHotkey) {
+    $('hotkey').value = 'Esc';
+    $('hotkey-set').disabled = true;
+    $('hotkey-status').textContent = 'A hotkey that works inside the game needs the desktop app. In a browser, Esc captures while this page is focused.';
+    return;
+  }
+  if (bridge.onHotkey) bridge.onHotkey(function () { hotkeyCapture(); });
+  var saved = DEFAULT_HOTKEY;
+  try { saved = localStorage.getItem('kl-hotkey') || DEFAULT_HOTKEY; } catch (e) {}
+  $('hotkey').value = hotkeyLabel(saved);
+  applyHotkey(saved).then(function (ok) {
+    if (!ok && saved !== DEFAULT_HOTKEY) applyHotkey(DEFAULT_HOTKEY);
+  });
+  $('hotkey-set').addEventListener('click', function () {
+    hotkeyRecording = true;
+    $('hotkey').classList.add('recording');
+    $('hotkey').value = 'Press the new keys...';
+    $('hotkey-status').textContent = 'Press the key or combination you want. Esc cancels.';
+  });
+  document.addEventListener('keydown', async function (event) {
+    if (!hotkeyRecording) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      hotkeyRecording = false;
+      $('hotkey').classList.remove('recording');
+      try { $('hotkey').value = hotkeyLabel(localStorage.getItem('kl-hotkey') || DEFAULT_HOTKEY); } catch (e) {}
+      $('hotkey-status').textContent = '';
+      return;
+    }
+    var accelerator = accelFromEvent(event);
+    if (!accelerator) { $('hotkey-status').textContent = 'Use a function key (F1-F24) or Ctrl/Alt/Shift plus a key.'; return; }
+    hotkeyRecording = false;
+    $('hotkey').classList.remove('recording');
+    var ok = await applyHotkey(accelerator);
+    if (!ok) { try { $('hotkey').value = hotkeyLabel(localStorage.getItem('kl-hotkey') || DEFAULT_HOTKEY); } catch (e) {} }
+  }, true);
+}
+initHotkey();
+
 window.runLog = runLog;
 window.addRow = addRow;
 window.addB = addB;

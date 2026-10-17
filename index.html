@@ -48,6 +48,12 @@
           <label class="btn">Add images…<input type="file" id="fi" accept="image/*" multiple hidden></label>
         </div>
         <p id="capture-status" class="capture-status" aria-live="polite">Not sharing a screen or window.</p>
+        <div class="row hotkey-row">
+          <label>Capture hotkey (works while you are in the game)<input id="hotkey" readonly></label>
+          <button class="btn" id="hotkey-set" type="button">Change</button>
+          <label class="mu check-inline"><input type="checkbox" id="beep" checked> beep on capture</label>
+          <span id="hotkey-status" class="mu" aria-live="polite"></span>
+        </div>
         <p id="interaction-status" class="interaction-status" hidden>Manual input only: clicks on this preview and key presses while Kama Ledger is focused are sent to the selected game window.</p>
         <div id="capture-picker" class="capture-picker" hidden>
           <div class="capture-picker-panel" role="dialog" aria-modal="true" aria-labelledby="capture-picker-title">
@@ -76,7 +82,12 @@
         <div class="row"><button class="btn" onclick="readAll()">Read all (OCR)</button><button class="btn" onclick="clearQ()">Clear queue</button><span id="ocrst" class="mu"></span></div>
         <div class="row"><span id="unclassified-count" class="mu">Unclassified: 0</span><button class="btn" id="show-unclassified" type="button">Review unclassified</button></div>
         <div id="unclassified-list" class="unclassified-list" hidden></div>
+        <datalist id="review-names"></datalist>
         <div id="transaction-preview" class="transaction-preview" aria-live="polite"></div>
+        <div class="row" id="review-actions" hidden>
+          <button class="btn primary-button" id="review-save" type="button">Save to ledger</button>
+          <span id="review-status" class="mu" aria-live="polite">Check the lines above. Fix any name, quantity or price, then save.</span>
+        </div>
         <textarea id="ocrtext" placeholder="The OCR result appears here. Fix anything wrong, then Calculate."></textarea>
         <div id="ocrwarn" class="bad"></div>
         <div class="row"><button class="btn" onclick="toLog()">Calculate in Log tab</button></div>
@@ -101,9 +112,9 @@
         <div id="dbgrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
         </div>
         <div id="db-ledger-view" hidden>
-          <p class="mu">Purchases and bank-recorded sales recognized by OCR are saved locally here.</p>
+          <p class="mu">Purchases and bank-recorded sales are saved locally here. Click a name, quantity or amount to correct it; changes save when you leave the field.</p>
           <div id="ledger-summary" class="ledger-summary"></div>
-          <div class="table-scroll"><table id="ledger-table" class="ledger-table"><thead><tr><th>Time</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Source</th></tr></thead><tbody></tbody></table></div>
+          <div class="table-scroll"><table id="ledger-table" class="ledger-table"><thead><tr><th>Time</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Source</th><th></th></tr></thead><tbody></tbody></table></div>
           <p id="ledger-empty" class="mu" hidden>No recognized sales or purchases yet. Run Read all (OCR) on captures.</p>
         </div>
       </section>

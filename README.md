@@ -12,6 +12,11 @@ from the app header. No interaction profile is uploaded.
 To run the desktop app from source, use `npm run start`. To build a portable executable instead of an installer,
 use `npm run package:portable`.
 
+### Capture hotkey and correcting what OCR read
+- **Hotkey:** with the desktop app running and a screen or window shared, press the capture hotkey (default Ctrl+Shift+K, change it in the Capture tab) while you are in the game. It captures the shared window and beeps; it only reads pixels and sends nothing to the game. A browser cannot do this, so in the browser Esc captures while the page is focused.
+- **Review before saving:** after Read all, every recognised purchase and sale appears in an editable table (type, item, quantity, amount). Fix anything wrong, use the suggestion button for misspelled names (needs the Data tab loaded), delete bad lines, then press Save to ledger. Nothing reaches the ledger until you save.
+- **Edit later:** in Database > Ledger History, click a name, quantity or amount to correct it, or use the delete button. Edited rows are marked.
+
 The original single-file version remains available at `kama-ledger.html` for Chrome or Edge.
 
 Tabs: Log total, Capture (screen share + OCR), Database (every capture), Recycling, Sell & tax, Brisage, Craft, Data.

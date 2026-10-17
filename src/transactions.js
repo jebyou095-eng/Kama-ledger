@@ -131,3 +131,42 @@ export function analyzePanel(lines, regionLabel) {
   }
   return { ...classification, lines: lines.slice() };
 }
+
+export function transactionToLine(transaction) {
+  const time = transaction.time ? `[${transaction.time}] ` : '';
+  const quantity = Number(transaction.quantity) > 0 ? Number(transaction.quantity) : 1;
+  const amount = (Number(transaction.amount) || 0).toLocaleString('fr-FR');
+  const item = String(transaction.item || '').trim();
+  if (transaction.type === 'sale') {
+    const detail = item && item !== 'Vente (banque)' ? ` (vente : ${quantity} x [${item}])` : '';
+    return `${time}Banque : + ${amount} Kamas${detail}`;
+  }
+  return `${time}${quantity} x [${item}] (${amount} kamas)`;
+}
+
+function cleanPatch(patch) {
+  const clean = {};
+  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim();
+  if (patch.amount !== undefined && Number.isFinite(Number(patch.amount)) && Number(patch.amount) >= 0) clean.amount = Math.round(Number(patch.amount));
+  if (patch.quantity === null || patch.quantity === '') clean.quantity = null;
+  else if (patch.quantity !== undefined && Number.isFinite(Number(patch.quantity)) && Number(patch.quantity) >= 1) clean.quantity = Math.round(Number(patch.quantity));
+  if (patch.type === 'sale' || patch.type === 'purchase') clean.type = patch.type;
+  return clean;
+}
+
+export function cleanTransactionPatch(patch) {
+  return cleanPatch(patch || {});
+}
+
+export function updateLedgerEntry(history, key, patch) {
+  return history.map((entry) => {
+    if (entry.key !== key) return entry;
+    const merged = { ...entry, ...cleanPatch(patch || {}), edited: true };
+    merged.line = transactionToLine(merged);
+    return merged;
+  });
+}
+
+export function removeLedgerEntry(history, key) {
+  return history.filter((entry) => entry.key !== key);
+}

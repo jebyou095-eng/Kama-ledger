@@ -11,6 +11,51 @@ let selectedInteractiveSourceId = null;
 let interactionEnabled = false;
 let activeShareOwner = null;
 let isScreenSharing = false;
+let mainWindow = null;
+let desiredHotkey = null;
+let registeredHotkey = null;
+
+// Capture hotkey: only tells the Kama Ledger window to take a screenshot of the
+// shared window. It never sends anything to the game. It is registered with the
+// system only while a screen or window is being shared, so the key is not taken
+// away from other programs the rest of the time.
+const HOTKEY_PATTERN = /^((CommandOrControl|Alt|Shift)\+)*([A-Z0-9]|F([1-9]|1\d|2[0-4])|Space|Up|Down|Left|Right|Tab|Enter|Backspace|Insert|Delete|Home|End|PageUp|PageDown)$/;
+function validHotkey(accelerator) {
+  if (typeof accelerator !== 'string' || !HOTKEY_PATTERN.test(accelerator)) return false;
+  return /^(CommandOrControl|Alt|Shift)\+/.test(accelerator) || /^F\d/.test(accelerator);
+}
+
+function fireHotkey() {
+  const target = activeShareOwner || mainWindow;
+  if (target && !target.isDestroyed()) target.webContents.send('capture:hotkey');
+}
+
+function syncHotkey() {
+  if (registeredHotkey) {
+    globalShortcut.unregister(registeredHotkey);
+    registeredHotkey = null;
+  }
+  if (!desiredHotkey || !isScreenSharing) return;
+  try {
+    if (globalShortcut.register(desiredHotkey, fireHotkey)) registeredHotkey = desiredHotkey;
+  } catch (error) { /* an invalid accelerator was already rejected in hotkey:set */ }
+}
+
+ipcMain.handle('hotkey:set', (_event, accelerator) => {
+  if (!validHotkey(accelerator)) return { ok: false, reason: 'Use a function key (F1-F24) or a combination with Ctrl, Alt or Shift.' };
+  if (accelerator !== registeredHotkey) {
+    try {
+      // Check the key is free right now, then release it again.
+      if (!globalShortcut.register(accelerator, fireHotkey)) return { ok: false, reason: 'Another program already uses that key combination.' };
+      globalShortcut.unregister(accelerator);
+    } catch (error) {
+      return { ok: false, reason: 'That key combination is not valid.' };
+    }
+  }
+  desiredHotkey = accelerator;
+  syncHotkey();
+  return { ok: true, accelerator };
+});
 
 function requireSelectedWindow(sourceId) {
   if (typeof sourceId !== 'string' || !sourceId.startsWith('window:')) return false;
@@ -46,6 +91,7 @@ ipcMain.handle('capture:select-source', (_event, sourceId, sourceName) => {
 
 ipcMain.handle('capture:set-sharing', (_event, sharing) => {
   isScreenSharing = sharing === true;
+  syncHotkey();
   return isScreenSharing;
 });
 
@@ -154,7 +200,7 @@ $vk = [byte]$__kamaArgs[1]
 });
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 960,
     minWidth: 1000,
@@ -181,10 +227,6 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  const shortcutRegistered = globalShortcut.register('CommandOrControl+Shift+S', () => {
-    if (isScreenSharing) activeShareOwner?.webContents.send('capture:global-snapshot');
-  });
-
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
     const requestedId = selectedCaptureSourceId;
     selectedCaptureSourceId = null;
@@ -204,11 +246,7 @@ app.whenReady().then(() => {
   });
 
   app.on('web-contents-created', (_event, contents) => {
-    contents.on('render-process-gone', () => { if (contents === activeShareOwner?.webContents) isScreenSharing = false; });
-  });
-
-  app.on('before-quit', () => {
-    if (shortcutRegistered) globalShortcut.unregister('CommandOrControl+Shift+S');
+    contents.on('render-process-gone', () => { if (contents === activeShareOwner?.webContents) { isScreenSharing = false; syncHotkey(); } });
   });
 
   createWindow();
@@ -220,10 +258,13 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
