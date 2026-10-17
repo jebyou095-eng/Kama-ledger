@@ -1,6 +1,6 @@
 import './style.css';
 import JSZip from 'jszip';
-import { mergeLedgerHistory, normLine as normalizeTransactionLine, transactionLines } from './transactions.js';
+import { analyzePanel, mergeLedgerHistory, normLine as normalizeTransactionLine, transactionLines } from './transactions.js';
 
 /*CORE*/
 function num(s) {
@@ -317,6 +317,7 @@ function calcB() {
 var Q = [], region = null, auto = false, stream = null, lastSmall = null, x0 = 0, y0 = 0, dragging = false;
 var captureSources = [], captureSourceType = 'screen', captureSelection = null, capturePickerResolve = null, pendingCaptureSource = null, activeCaptureSource = null;
 var interactionEnabled = false;
+var unclassifiedCaptures = [];
 function renderCaptureSources() {
   var list = $('capture-sources');
   var sources = captureSources.filter(function (source) { return source.type === captureSourceType; });
@@ -387,6 +388,7 @@ $('capture-picker').addEventListener('click', function (event) {
 function showCaptureStream(s) {
   stream = s;
   activeCaptureSource = pendingCaptureSource;
+  if (window.kamaDesktopCapture) window.kamaDesktopCapture.setSharing(true);
   $('vid').srcObject = s;
   $('vid').play();
   $('vw').style.display = 'block';
@@ -417,6 +419,7 @@ function updateCaptureControls() {
 function endCapture(stopTracks) {
   var activeStream = stream;
   stream = null;
+  if (window.kamaDesktopCapture) window.kamaDesktopCapture.setSharing(false);
   activeCaptureSource = null;
   auto = false;
   lastSmall = null;
@@ -524,6 +527,56 @@ function renderTransactionPreview() {
   }
 }
 $('ocrtext').addEventListener('input', renderTransactionPreview);
+$('show-unclassified').addEventListener('click', function () {
+  $('unclassified-list').hidden = !$('unclassified-list').hidden;
+});
+function renderUnclassified() {
+  var list = $('unclassified-list');
+  $('unclassified-count').textContent = 'Unclassified: ' + unclassifiedCaptures.length;
+  list.replaceChildren();
+  unclassifiedCaptures.forEach(function (capture, index) {
+    var row = document.createElement('div');
+    row.className = 'unclassified-row';
+    var excerpt = document.createElement('pre');
+    excerpt.textContent = capture.lines.join('\n');
+    var select = document.createElement('select');
+    select.setAttribute('aria-label', 'Label unclassified panel');
+    [['', 'Choose panel…'], ['chat', 'Chat'], ['recipes', 'Recettes'], ['market-list', 'Hôtel de vente'], ['market-chart', 'Cours du marché'], ['inventory', 'Inventaire'], ['brisage', 'Brisage']].forEach(function (optionData) {
+      var option = document.createElement('option');
+      option.value = optionData[0];
+      option.textContent = optionData[1];
+      select.appendChild(option);
+    });
+    var label = document.createElement('button');
+    label.className = 'btn';
+    label.textContent = 'Apply label';
+    label.addEventListener('click', async function () {
+      if (!select.value) return;
+      try {
+        var analyzed = analyzePanel(capture.lines, select.value);
+        if (analyzed.panel === 'chat') await saveLedgerTransactions(analyzed.transactions, capture.sourceIds);
+        else if (analyzed.panel === 'recipes') {
+          var prior = await metaGet('recipe-observations') || [];
+          prior.push({ capturedAt: capture.createdAt, sourceIds: capture.sourceIds, ingredients: analyzed.ingredients });
+          await metaPut('recipe-observations', prior);
+        }
+        else {
+          var observations = await metaGet('panel-observations') || [];
+          observations.push({ capturedAt: capture.createdAt, sourceIds: capture.sourceIds, panel: analyzed.panel, lines: analyzed.lines });
+          await metaPut('panel-observations', observations);
+        }
+        unclassifiedCaptures.splice(index, 1);
+        await metaPut('unclassified-captures', unclassifiedCaptures);
+        renderUnclassified();
+        $('ocrst').textContent = analyzed.label + ' label applied.';
+      } catch (error) {
+        $('ocrst').textContent = 'Could not save panel classification: ' + error.message;
+      }
+    });
+    row.append(excerpt, select, label);
+    list.appendChild(row);
+  });
+}
 function drawMode() {
   var o = $('ov');
   var on = o.style.pointerEvents !== 'auto';
@@ -577,6 +630,9 @@ function push(url, src) {
 function snap() {
   var c = grab();
   if (c) { recordAction('snap'); push(c.toDataURL('image/png'), 'snap'); } else alert('Share the game window first.');
+}
+if (window.kamaDesktopCapture) {
+  window.kamaDesktopCapture.onGlobalSnapshot(function () { snap(); });
 }
 document.addEventListener('keydown', function (event) {
   var target = event.target;
@@ -695,15 +751,25 @@ async function readAll() {
       if (Q[i].id != null) await dbUpdate(Q[i].id, { text: r.data.text });
     }
     await w.terminate();
-    var s = stitch(caps), transactions = transactionLines(s.lines);
-    $('ocrtext').value = transactions.map(function (transaction) { return transaction.line; }).join('\n');
+    var s = stitch(caps);
+    var panel = analyzePanel(s.lines, $('capture-region-label').value);
+    var transactions = panel.panel === 'chat' ? panel.transactions : [];
+    $('ocrtext').value = panel.panel === 'chat' ? transactions.map(function (transaction) { return transaction.line; }).join('\n') : '';
     renderTransactionPreview();
-    await saveLedgerTransactions(transactions, Q.map(function (capture) { return capture.id; }).filter(function (id) { return id != null; }));
+    var sourceIds = Q.map(function (capture) { return capture.id; }).filter(function (id) { return id != null; });
+    if (panel.panel === 'chat') await saveLedgerTransactions(transactions, sourceIds);
+    else if (panel.panel === 'unclassified') {
+      unclassifiedCaptures.push({ id: Date.now(), sourceIds: sourceIds, lines: s.lines, createdAt: Date.now() });
+      await metaPut('unclassified-captures', unclassifiedCaptures);
+      renderUnclassified();
+    }
     $('ocrwarn').innerHTML = s.warns.map(function (x) { return '<div>' + x + '</div>'; }).join('');
     if ($('t-db').classList.contains('on')) renderDB();
-    $('ocrst').textContent = transactions.length
-      ? 'Found ' + transactions.length + ' sale/purchase line(s) from ' + Q.length + ' captures. Sales are green; purchases are red.'
-      : 'No sale or purchase lines recognized in ' + Q.length + ' capture(s).';
+    $('ocrst').textContent = panel.panel === 'unclassified'
+      ? 'Panel title was not recognized. Capture added to Unclassified for manual labeling.'
+      : panel.panel === 'chat'
+        ? (transactions.length ? 'Chat: found ' + transactions.length + ' sale/purchase line(s). Sales are green; purchases are red.' : 'Chat recognized; no purchase or bank-credit sale lines found.')
+        : panel.label + ' recognized. ' + (panel.ingredients ? panel.ingredients.length + ' recipe ingredient(s) found; market and other values remain unconfirmed.' : 'Panel text retained for review, not added to the trade ledger.');
   } catch (e) { $('ocrst').textContent = 'Error: ' + e.message; }
 }
 function toLog() { $('log').value = $('ocrtext').value; show('log'); runLog(); }
@@ -711,6 +777,13 @@ function toLog() { $('log').value = $('ocrtext').value; show('log'); runLog(); }
 var DB = null;
 var ledgerHistory = [];
 var databaseView = 'captures';
+try {
+  var savedCaptureRegionLabel = localStorage.getItem('kamaLedgerCaptureRegion');
+  if (savedCaptureRegionLabel && $('capture-region-label').querySelector('option[value="' + savedCaptureRegionLabel + '"]')) $('capture-region-label').value = savedCaptureRegionLabel;
+} catch (e) {}
+$('capture-region-label').addEventListener('change', function () {
+  try { localStorage.setItem('kamaLedgerCaptureRegion', this.value); } catch (e) {}
+});
 function dbOpen() {
   return new Promise(function (res) {
     try {
@@ -799,6 +872,10 @@ function renderLedgerHistory() {
 async function loadLedgerHistory() {
   ledgerHistory = await metaGet('ledger-history') || [];
   renderLedgerHistory();
+}
+async function loadUnclassifiedCaptures() {
+  unclassifiedCaptures = await metaGet('unclassified-captures') || [];
+  renderUnclassified();
 }
 $('db-captures-tab').addEventListener('click', function () { showDatabaseView('captures'); });
 $('db-ledger-tab').addEventListener('click', function () { showDatabaseView('ledger'); });
@@ -1055,7 +1132,7 @@ $('bi').addEventListener('input', function () { fillList('bi', 'bdl'); });
 $('bi').addEventListener('change', fillBrisage);
 [['Vitalité', 216, 0.2, 1, ''], ['Force', 49, 1, 1, ''], ['Intelligence', 48, 1, 1, ''], ['Agilité', 48, 1, 1, ''], ['Sagesse', 26, 3, 3, ''], ['Dommages Feu', 10, 20, 20, ''], ['Prospection', 7, 3, 3, '']].forEach(addB);
 
-dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return metaGet('index'); }).then(function (x) { if (x) setIdx(x); });
+dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return loadUnclassifiedCaptures(); }).then(function () { return metaGet('index'); }).then(function (x) { if (x) setIdx(x); });
 addRow(); addRow(); calcTax();
 var st = 'log';
 try { st = localStorage.tab || 'log'; } catch (e) {}

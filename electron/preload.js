@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('kamaDesktopCapture', {
   setInteractionEnabled: (enabled) => ipcRenderer.invoke('interaction:set-enabled', enabled),
   sendClick: (point) => ipcRenderer.invoke('interaction:click', point),
   sendKey: (key) => ipcRenderer.invoke('interaction:key', key),
+  onGlobalSnapshot: (callback) => ipcRenderer.on('capture:global-snapshot', callback),
+  setSharing: (sharing) => ipcRenderer.invoke('capture:set-sharing', sharing),
 });

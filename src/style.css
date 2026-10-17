@@ -124,6 +124,12 @@ td input { padding: 4px 6px; }
 .transaction-line b { justify-self: end; white-space: nowrap; }
 .transaction-line.sale { color: #286b45; border-color: #3b9360; background: #edf6ef; }
 .transaction-line.purchase { color: #a23e37; border-color: #c75a50; background: #fbefed; }
+.region-label { min-width: 155px; color: var(--mu); font-size: 12px; }
+.unclassified-list[hidden] { display: none; }
+.unclassified-list { display: grid; gap: 10px; margin: 10px 0 14px; }
+.unclassified-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, 220px) auto; gap: 10px; align-items: start; padding: 10px; border: 1px solid #dccb9e; border-radius: 5px; background: #fbf8f0; }
+.unclassified-row pre { max-height: 110px; overflow: auto; margin: 0; white-space: pre-wrap; color: var(--tx); font: 12px/1.45 ui-monospace, monospace; }
+@media (max-width: 620px) { .unclassified-row { grid-template-columns: 1fr; } }
 .db-subnav { display: flex; gap: 6px; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--bd); }
 .db-subtab { padding: 6px 10px; border: 1px solid transparent; border-radius: 5px; color: var(--mu); background: transparent; cursor: pointer; font: inherit; }
 .db-subtab.on { color: var(--ac); background: var(--ac-soft); border-color: #bfd3c3; }

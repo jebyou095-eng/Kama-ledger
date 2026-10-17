@@ -35,12 +35,13 @@
       </section>
 
       <section id="t-cap">
-        <p class="mu">Share a game screen or window, select the chat region, and capture when needed. OCR reads the shared pixels and separates bank-credit sales from item purchases. Capture does not send clicks or keyboard input to the game. You can also paste or drop screenshots here.</p>
+        <p class="mu">Share a game screen or window and capture a panel. OCR reads the panel title first; named regions override title detection. Chat keeps only purchases and bank-credit sales. “Concassed” is treated as Brisage. Unrecognized panels stay in review instead of being guessed.</p>
         <div class="row">
           <button class="btn primary-button" onclick="shareScreen()">Share screen or window</button>
           <button class="btn stop-button" id="stop-share" onclick="stopShare()" type="button" hidden>Stop sharing</button>
           <button class="btn" id="game-interaction" type="button" aria-pressed="false" disabled>Game input: off</button>
           <button class="btn" id="rgbtn" onclick="drawMode()">Set region</button>
+          <label class="region-label">Region type<select id="capture-region-label"><option value="auto">Auto-detect title</option><option value="chat">Chat</option><option value="recipes">Recettes</option><option value="market-list">Hôtel de vente</option><option value="market-chart">Cours du marché</option><option value="inventory">Inventaire</option><option value="brisage">Brisage</option></select></label>
           <button class="btn" id="autobtn" onclick="toggleAuto()">Auto capture: off</button>
           <button class="btn" onclick="snap()">Snap now</button>
           <span class="mu">Esc to capture</span>
@@ -73,6 +74,8 @@
         <p class="mu">Queue: <b id="qn">0</b> capture(s)</p>
         <div id="q" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         <div class="row"><button class="btn" onclick="readAll()">Read all (OCR)</button><button class="btn" onclick="clearQ()">Clear queue</button><span id="ocrst" class="mu"></span></div>
+        <div class="row"><span id="unclassified-count" class="mu">Unclassified: 0</span><button class="btn" id="show-unclassified" type="button">Review unclassified</button></div>
+        <div id="unclassified-list" class="unclassified-list" hidden></div>
         <div id="transaction-preview" class="transaction-preview" aria-live="polite"></div>
         <textarea id="ocrtext" placeholder="The OCR result appears here. Fix anything wrong, then Calculate."></textarea>
         <div id="ocrwarn" class="bad"></div>

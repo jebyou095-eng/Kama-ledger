@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron';
+import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, session } from 'electron';
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,8 @@ const appRoot = join(__dirname, '..');
 let selectedCaptureSourceId = null;
 let selectedInteractiveSourceId = null;
 let interactionEnabled = false;
+let activeShareOwner = null;
+let isScreenSharing = false;
 
 function requireSelectedWindow(sourceId) {
   if (typeof sourceId !== 'string' || !sourceId.startsWith('window:')) return false;
@@ -38,8 +40,13 @@ ipcMain.handle('capture:select-source', (_event, sourceId, sourceName) => {
   selectedCaptureSourceId = sourceId;
   interactionEnabled = false;
   selectedInteractiveSourceId = null;
-  if (!requireSelectedWindow(sourceId)) return false;
+  requireSelectedWindow(sourceId);
   return true;
+});
+
+ipcMain.handle('capture:set-sharing', (_event, sharing) => {
+  isScreenSharing = sharing === true;
+  return isScreenSharing;
 });
 
 ipcMain.handle('interaction:set-enabled', (_event, enabled) => {
@@ -168,12 +175,20 @@ function createWindow() {
   } else {
     mainWindow.loadURL('http://localhost:5173');
   }
+
+  mainWindow.webContents.on('did-finish-load', () => { activeShareOwner = mainWindow; });
+  mainWindow.on('closed', () => { if (activeShareOwner === mainWindow) activeShareOwner = null; });
 }
 
 app.whenReady().then(() => {
+  const shortcutRegistered = globalShortcut.register('CommandOrControl+Shift+S', () => {
+    if (isScreenSharing) activeShareOwner?.webContents.send('capture:global-snapshot');
+  });
+
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
     const requestedId = selectedCaptureSourceId;
     selectedCaptureSourceId = null;
+    isScreenSharing = Boolean(requestedId);
     if (!requestedId) {
       callback({});
       return;
@@ -182,9 +197,18 @@ app.whenReady().then(() => {
     desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
         const source = sources.find((item) => item.id === requestedId);
+        if (!source) isScreenSharing = false;
         callback(source ? { video: source } : {});
       })
-      .catch(() => callback({}));
+      .catch(() => { isScreenSharing = false; callback({}); });
+  });
+
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('render-process-gone', () => { if (contents === activeShareOwner?.webContents) isScreenSharing = false; });
+  });
+
+  app.on('before-quit', () => {
+    if (shortcutRegistered) globalShortcut.unregister('CommandOrControl+Shift+S');
   });
 
   createWindow();
@@ -201,3 +225,5 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+app.on('will-quit', () => globalShortcut.unregisterAll());

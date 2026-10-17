@@ -1,6 +1,7 @@
 export function parseTransactionLine(line) {
   const normalized = String(line || '').replace(/[\u00a0\u202f]/g, ' ').replace(/^\[\d{1,2}:\d{2}\]\s*/, '').trim();
   const time = String(line || '').match(/^\[(\d{1,2}:\d{2})\]/);
+  if (!time) return null;
   const sale = normalized.match(/^Banque\s*:\s*\+\s*([\d\s,.]+)\s*Kamas\b(?:.*)?$/i);
   if (sale) {
     const item = normalized.match(/vente\s*:\s*(\d+)\s*x\s+\[([^\]]+)\]/i);
@@ -87,4 +88,46 @@ export function mergeLedgerHistory(existing, transactions, captureIds, recordedA
   });
 
   return history;
+}
+
+export const PANEL_TYPES = [
+  { id: 'chat', label: 'Chat', aliases: ['chat'] },
+  { id: 'recipes', label: 'Recettes', aliases: ['recettes', 'recipe', 'recipes'] },
+  { id: 'market-chart', label: 'Cours du marché', aliases: ['cours du marche', 'cours du marché', 'market price', 'price history'] },
+  { id: 'market-list', label: 'Hôtel de vente', aliases: ['hotel de vente', 'hôtel de vente', 'price estimations'] },
+  { id: 'inventory', label: 'Inventaire', aliases: ['inventaire', 'inventory'] },
+  { id: 'brisage', label: 'Brisage', aliases: ['brisage', 'concassed', 'concassé', 'concassee', 'concassée'] },
+];
+
+function normalizePanelText(value) {
+  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+export function classifyPanel(lines, regionLabel) {
+  const label = normalizePanelText(regionLabel);
+  if (label && label !== 'auto' && label !== 'automatic') {
+    const byRegion = PANEL_TYPES.find((panel) => panel.id === label || normalizePanelText(panel.label) === label);
+    if (byRegion) return { panel: byRegion.id, label: byRegion.label, source: 'region', confidence: 1 };
+  }
+
+  const text = normalizePanelText(Array.isArray(lines) ? lines.slice(0, 8).join(' ') : lines);
+  const panel = PANEL_TYPES.find((candidate) => candidate.aliases.some((alias) => text.includes(normalizePanelText(alias))));
+  return panel
+    ? { panel: panel.id, label: panel.label, source: 'title', confidence: 1 }
+    : { panel: 'unclassified', label: 'Unclassified', source: 'unclassified', confidence: 0 };
+}
+
+export function analyzePanel(lines, regionLabel) {
+  const classification = classifyPanel(lines, regionLabel);
+  if (classification.panel === 'chat') {
+    return { ...classification, transactions: transactionLines(lines), ignoredLines: lines.filter((line) => !parseTransactionLine(line)) };
+  }
+  if (classification.panel === 'recipes') {
+    const ingredients = lines.map((line) => {
+      const match = String(line).match(/^\s*(\d+)\s*x\s+\[([^\]]+)\]/i);
+      return match ? { quantity: Number(match[1]), item: match[2].trim(), line } : null;
+    }).filter(Boolean);
+    return { ...classification, ingredients };
+  }
+  return { ...classification, lines: lines.slice() };
 }

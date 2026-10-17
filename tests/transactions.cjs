@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 
 async function main() {
-  const { classifyTransactionLine, mergeLedgerHistory, parseTransactionLine, transactionLines } = await import('../src/transactions.js');
+  const { analyzePanel, classifyPanel, classifyTransactionLine, mergeLedgerHistory, parseTransactionLine, transactionLines } = await import('../src/transactions.js');
   const sampleSale = '[18:35] Banque : + 1 338 Kamas (vente : 1 x [Rune Ré Per Terre])';
   const samplePurchase = '[18:35] 1 x [Rune Ré Per Terre] (1\u00a0338 kamas)';
   const { normLine } = await import('../src/transactions.js');
@@ -17,6 +17,16 @@ async function main() {
     type: 'purchase', quantity: 1, item: 'Rune Ré Per Terre', amount: 1338, time: '18:35', line: samplePurchase,
   });
   assert.equal(transactionLines([sampleSale, 'ignored chat', samplePurchase]).length, 2);
+  assert.equal(transactionLines(['1 x [Rune Ré Per Terre] (1 338 kamas)']).length, 0);
+  assert.equal(classifyPanel(['CHAT', samplePurchase]).panel, 'chat');
+  assert.equal(classifyPanel(['Cours du marché', 'Prix médian']).panel, 'market-chart');
+  assert.equal(classifyPanel(['Concassed']).panel, 'brisage');
+  assert.equal(classifyPanel(['unknown title']).panel, 'unclassified');
+  assert.equal(classifyPanel(['unknown title'], 'Inventory').panel, 'inventory');
+  assert.equal(analyzePanel(['Recettes', '2 x [Rune Ré Per Terre]']).ingredients[0].quantity, 2);
+  assert.equal(analyzePanel(['CHAT', samplePurchase]).transactions.length, 1);
+  assert.equal(analyzePanel(['CHAT', '1 x [Rune Ré Per Terre] (1 338 kamas)']).transactions.length, 0);
+  assert.equal(analyzePanel(['Hôtel de vente', 'Prix moyen 299 kamas']).panel, 'market-list');
   const trades = transactionLines([sampleSale, samplePurchase, samplePurchase]);
   const saved = mergeLedgerHistory([], trades, [12, 13], 1000);
   const repeated = mergeLedgerHistory(saved, trades, [12, 13], 2000);
