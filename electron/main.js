@@ -1,5 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, session } from 'electron';
 import { execFile } from 'node:child_process';
+import { appendFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +13,28 @@ let interactionEnabled = false;
 let activeShareOwner = null;
 let isScreenSharing = false;
 let mainWindow = null;
+
+// A small log next to the app data, so a window that does not appear can be diagnosed.
+// Windows: %APPDATA%\Kama Ledger\kama-ledger.log
+function logLine(message) {
+  try { appendFileSync(join(app.getPath('userData'), 'kama-ledger.log'), `${new Date().toISOString()} ${message}\n`); } catch (error) { /* logging must never break the app */ }
+}
+process.on('uncaughtException', (error) => { logLine(`uncaughtException: ${error && error.stack || error}`); });
+process.on('unhandledRejection', (error) => { logLine(`unhandledRejection: ${error && error.stack || error}`); });
+
+// Only one copy runs. Starting it again brings the existing window forward instead of
+// leaving a second invisible process in the background.
+const gotInstanceLock = app.requestSingleInstanceLock();
+if (!gotInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) { createWindow(); return; }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 let desiredHotkey = null;
 let registeredHotkey = null;
 
@@ -216,17 +239,29 @@ function createWindow() {
     },
   });
 
-  if (app.isPackaged) {
-    mainWindow.loadFile(join(appRoot, 'dist', 'index.html'));
-  } else {
-    mainWindow.loadURL('http://localhost:5173');
-  }
+  // The built app is used unless a dev server address is given on purpose
+  // (KAMA_DEV_URL=http://localhost:5173), so `npm run start` never waits for a server that is not running.
+  const builtPage = join(appRoot, 'dist', 'index.html');
+  const devUrl = app.isPackaged ? null : process.env.KAMA_DEV_URL;
+  if (devUrl) mainWindow.loadURL(devUrl);
+  else mainWindow.loadFile(builtPage);
+
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+    logLine(`did-fail-load ${code} ${description} ${url}`);
+    if (!isMainFrame) return;
+    const reason = existsSync(builtPage) ? description : `${description}. The built app (dist/index.html) is missing: run "npm run build" first.`;
+    const page = `<body style="font:16px system-ui;padding:32px;background:#14161c;color:#e8eaf0"><h2>Kama Ledger could not load its page</h2><p>${String(reason).replace(/[<>&]/g, '')}</p><p>Details are in kama-ledger.log in the app data folder.</p></body>`;
+    mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(page));
+  });
+  mainWindow.webContents.on('preload-error', (_event, path, error) => logLine(`preload-error ${path}: ${error && error.stack || error}`));
+  mainWindow.webContents.on('render-process-gone', (_event, details) => logLine(`render-process-gone ${JSON.stringify(details)}`));
 
   mainWindow.webContents.on('did-finish-load', () => { activeShareOwner = mainWindow; });
   mainWindow.on('closed', () => { if (activeShareOwner === mainWindow) activeShareOwner = null; });
 }
 
 app.whenReady().then(() => {
+  if (!gotInstanceLock) return;
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
     const requestedId = selectedCaptureSourceId;
     selectedCaptureSourceId = null;
