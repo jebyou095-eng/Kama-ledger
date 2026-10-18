@@ -1,5 +1,6 @@
 import './style.css';
 import JSZip from 'jszip';
+import { initItems } from './items-ui.js';
 import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
 /*CORE*/
@@ -175,7 +176,7 @@ var KNOWN = { vitalite: [0.2, 1], force: [1, 1], intelligence: [1, 1], agilite: 
 var F = function (x) { return isFinite(x) ? Math.round(x).toLocaleString('fr-FR') : '-'; };
 var $ = function (id) { return document.getElementById(id); };
 
-var tabs = [['log', 'Log total'], ['cap', 'Capture'], ['db', 'Database'], ['rec', 'Recycling'], ['tax', 'Sell & tax'], ['bri', 'Brisage'], ['craft', 'Craft'], ['data', 'Data']];
+var tabs = [['items', 'Items'], ['log', 'Log total'], ['cap', 'Capture'], ['db', 'Database'], ['rec', 'Recycling'], ['tax', 'Sell & tax'], ['bri', 'Brisage'], ['craft', 'Craft'], ['data', 'Data']];
 function loadFlowProfile() {
   try {
     var saved = JSON.parse(localStorage.getItem('kamaLedgerFlow') || '{}');
@@ -296,6 +297,7 @@ function addB(v) {
   $('bt').tBodies[0].appendChild(tr);
   calcB();
 }
+var lastBriValue = 0;
 function calcB() {
   var l = num($('bl').value), c = num($('bc').value), tr = 0, tv = 0, v100 = 0;
   [].forEach.call($('bt').tBodies[0].rows, function (r) {
@@ -308,6 +310,7 @@ function calcB() {
     if (isFinite(w)) tv += w;
     if (isFinite(n1 * pr)) v100 += n1 * pr;
   });
+  lastBriValue = tv;
   $('bsum').innerHTML = 'Runes: ' + F(tr) + ' &nbsp; Value: ' + F(tv);
   var ip = num($('bp').value);
   $('bmin').textContent = (isFinite(ip) && v100 > 0) ? 'Minimum coefficient to break even (after 2% tax on selling the runes): ' + (ip / (0.98 * v100) * 100).toFixed(0) + '%  (value at 100% = ' + F(v100) + ')' : 'Enter rune prices and the item price to get the break-even coefficient.';
@@ -875,11 +878,13 @@ $('capture-region-label').addEventListener('change', function () {
 function dbOpen() {
   return new Promise(function (res) {
     try {
-      var r = indexedDB.open('kama-ledger', 2);
+      var r = indexedDB.open('kama-ledger', 3);
       r.onupgradeneeded = function () {
         var d = r.result;
         if (!d.objectStoreNames.contains('shots')) d.createObjectStore('shots', { keyPath: 'id', autoIncrement: true });
         if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+        if (!d.objectStoreNames.contains('Items')) d.createObjectStore('Items', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('Ingredients')) d.createObjectStore('Ingredients', { keyPath: 'id' });
       };
       r.onsuccess = function () { DB = r.result; res(); };
       r.onerror = function () { res(); };
@@ -1127,6 +1132,7 @@ function setIdx(idx) {
   if ($('log').value) runLog();
   craftRender();
   dataSearch();
+  if (itemsUi) itemsUi.render();
 }
 function setStat(t) { $('dstat').textContent = t; }
 async function loadFiles(files) {
@@ -1258,10 +1264,26 @@ $('bi').addEventListener('input', function () { fillList('bi', 'bdl'); });
 $('bi').addEventListener('change', fillBrisage);
 [['Vitalité', 216, 0.2, 1, ''], ['Force', 49, 1, 1, ''], ['Intelligence', 48, 1, 1, ''], ['Agilité', 48, 1, 1, ''], ['Sagesse', 26, 3, 3, ''], ['Dommages Feu', 10, 20, 20, ''], ['Prospection', 7, 3, 3, '']].forEach(addB);
 
-dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return loadUnclassifiedCaptures(); }).then(function () { return metaGet('index'); }).then(function (x) { if (x) setIdx(x); });
+var itemsUi = null;
+itemsUi = initItems({
+  $: $, F: F, num: num, esc: esc, normName: normName, pickItem: pickItem,
+  getDB: function () { return DB; }, getP: function () { return P; },
+  netP: netP, taxMode: function () { return $('rnd').value; },
+  fillList: fillList,
+  getOcrText: function () { return $('ocrtext').value; },
+  getBrisageValue: function () { return lastBriValue; },
+  openBrisage: function (name) { $('bi').value = name; fillBrisage(); show('bri'); }
+});
+dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return loadUnclassifiedCaptures(); }).then(function () { return metaGet('index'); }).then(async function (x) {
+  if (!x) {
+    try { x = (await import('./data/kama-data.json')).default; if (x) metaPut('index', x); } catch (e) { x = null; }
+  }
+  if (x) setIdx(x);
+  return itemsUi.load();
+});
 addRow(); addRow(); calcTax();
-var st = 'log';
-try { st = localStorage.tab || 'log'; } catch (e) {}
+var st = 'items';
+try { st = localStorage.tab || 'items'; } catch (e) {}
 show(st);
 
 window.$ = $;

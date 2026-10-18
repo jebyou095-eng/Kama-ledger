@@ -21,6 +21,25 @@ The original single-file version remains available at `kama-ledger.html` for Chr
 
 Tabs: Log total, Capture (screen share + OCR), Database (every capture), Recycling, Sell & tax, Brisage, Craft, Data.
 
+## Launching the app (Windows)
+
+1. Install Node.js (LTS) once from https://nodejs.org.
+2. Double-click **Start Kama Ledger.bat**. The first run installs what it needs (internet, a few minutes); after that it opens the app in a few seconds.
+
+The game data (19 382 items, 4 402 recipes, Datafus) is bundled, so the **Items** tab works immediately.
+
+## Items and Ingredients lists
+
+The **Items** tab is your market list. Type an item name to add it: if it has a recipe, its ingredients are added to the Ingredients list too. Each row shows price, value if recycled, value if concassed (brisage), what you can craft with it, and whether crafting is worth it:
+
+- green: profit after the 2% listing tax is more than the neutral band (default 2% of the craft cost)
+- grey: within the band, cost = profit
+- red: loss if crafted
+
+Click a row to open it: prices by lot (1 / 10 / 100 / 1 000, or paste the popup text), average price, articles sold (easy to sell from the threshold in the toolbar), Pépites if recycled, value if concassed, the ingredient prices, and the price history. Prices older than 7 days are flagged. The data is saved on the computer in the IndexedDB stores `Items` and `Ingredients`; **Export Items + Ingredients** writes `Items.json` and `Ingredients.json`, and **Import** reads them back.
+
+Items newer than Datafus (Dec 2024) are not in the game data: they can be added as custom ingredients (prices only, no recipe).
+
 ## Game data (Datafus)
 1. Open the Data tab.
 2. Choose the Datafus zip, the `Datafus-master` folder, or just these files:
