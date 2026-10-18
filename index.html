@@ -40,6 +40,9 @@
           <label>Easy if sold ≥<input id="items-easy" size="3" inputmode="numeric"></label>
         </div>
         <div class="row"><span id="items-count" class="mu"></span><span id="items-status" class="mu" aria-live="polite"></span><button class="btn" id="items-export" type="button">Export Items + Ingredients</button><label class="btn">Import…<input id="items-import" type="file" accept=".json" multiple hidden></label></div>
+        <div class="row scan-strip"><span id="items-budget" class="budget"></span></div>
+        <div id="items-scanlog" class="scanlog" aria-live="polite"></div>
+        <div id="items-review" class="items-review" hidden></div>
         <p id="items-stale" class="stale-banner" hidden></p>
         <div id="items-list" class="items-list"></div>
       </section>
@@ -93,7 +96,13 @@
             </div>
           </div>
         </div>
-        <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
+        <div class="profile-box">
+          <strong>Scan profile</strong>
+          <p class="mu">Draw each panel once on the shared game window (or on a screenshot). After that, the hotkey scans every region you set and fills Items and Ingredients by itself. Keep the game window at the same size and position, otherwise redraw the regions.</p>
+          <div id="profile-list"></div>
+          <div class="row"><button class="btn primary-button" id="scan-now" type="button">Scan now</button><label class="btn">Load a screenshot to draw on…<input id="scan-still" type="file" accept="image/*" hidden></label><label class="btn">Scan screenshot file(s)…<input id="scan-file" type="file" accept="image/*" multiple hidden></label><span id="scan-status" class="mu" aria-live="polite"></span></div>
+        </div>
+        <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="pboxes" style="position:absolute;inset:0;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
         <p class="mu">Queue: <b id="qn">0</b> capture(s)</p>
         <div id="q" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         <div class="row"><button class="btn" onclick="readAll()">Read all (OCR)</button><button class="btn" onclick="clearQ()">Clear queue</button><span id="ocrst" class="mu"></span></div>

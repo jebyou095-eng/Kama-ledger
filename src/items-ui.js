@@ -1,3 +1,4 @@
+import { matchVerdict } from './market.js';
 import { EASY_SOLD, LOT_SIZES, NEUTRAL_BAND, STALE_DAYS, evaluate, isStale, newEntry, parseLots, priceAgeDays, priceFromLots, reverseRecipes, setPrice, unitPrices } from './items.js';
 
 // Items / Ingredients tab. Data is stored in IndexedDB object stores named "Items" and "Ingredients".
@@ -31,6 +32,7 @@ export function initItems(env) {
     (await all('Items')).forEach((r) => { items[r.id] = r; });
     (await all('Ingredients')).forEach((r) => { ingredients[r.id] = r; });
     render();
+    await loadScanState();
   }
 
   function ctx() {
@@ -93,7 +95,7 @@ export function initItems(env) {
       : (ev.craft !== null ? '<b>' + money(ev.craft, true) + '</b><small>best craft using it</small>' : '<small>no tracked craft yet</small>');
     return '<article class="irow st-' + ev.status + (o ? ' open' : '') + '" data-id="' + rec.id + '">'
       + '<div class="irow-main" tabindex="0" role="button" aria-expanded="' + o + '">'
-      + '<span class="icon">' + esc(initials(rec.name)) + '</span>'
+      + (rec.icon ? '<img class="icon" alt="" src="' + rec.icon + '">' : '<span class="icon">' + esc(initials(rec.name)) + '</span>')
       + '<span class="iname"><b>' + esc(rec.name) + '</b><small>' + (rec.level ? 'Lvl ' + rec.level + ' · ' : '') + (typeName(rec) ? esc(typeName(rec)) + ' · ' : '') + (rec.custom ? 'Custom ' : '') + (rec.kind === 'item' ? 'Item' : 'Ingredient') + '</small><small>' + age(rec) + (ev.sell !== 'unknown' ? ' · <span class="sell-' + ev.sell + '">' + (ev.sell === 'easy' ? 'easy to sell' : 'hard to sell') + '</span>' : '') + '</small></span>'
       + '<span class="icell"><label>Price</label><input class="f-price" inputmode="numeric" value="' + (rec.price ? F(rec.price) : '') + '" placeholder="kamas"></span>'
       + '<span class="icell"><label>If recycled</label><b>' + money(ev.recycled) + '</b></span>'
@@ -210,5 +212,140 @@ export function initItems(env) {
     e.target.value = ''; status(n + ' entries imported.'); render();
   });
 
-  return { load, render, add };
+
+  // ---- scanner hooks: everything below is cumulative (it updates what exists and creates what is new) ----
+  let review = [], budget = null, scanLog = [];
+  const nowTs = () => Date.now();
+
+  async function ensureRec(a, name, level, icon) {
+    const found = a ? (items[a[0]] || ingredients[a[0]]) : Object.values(ingredients).concat(Object.values(items)).find((r) => r.custom && env.normName(r.name) === env.normName(name));
+    if (found) return { rec: found, created: false };
+    const rec = a ? newEntry(a, nowTs())
+      : { ...newEntry([-nowTs() - Math.floor(Math.random() * 1000), String(name).trim(), level || null, 0, 0, []], nowTs()), custom: true, kind: 'ingredient', note: 'Not in the game data (newer than Datafus). Prices only, no recipe.' };
+    if (icon) rec.icon = icon;
+    await commit(rec);
+    if (a) await ensureIngredients(rec);
+    return { rec, created: true };
+  }
+
+  async function applyPrice(rec, price, icon) {
+    let next = { ...rec };
+    if (icon && !next.icon) next.icon = icon;
+    if (Number.isFinite(price) && price > 0) { next = setPrice(next, price, nowTs()); next.avgPrice = price; }
+    await commit(next);
+    return next;
+  }
+
+  const MATCH_OK = 0.9; // below this the name goes to review: lookalike items (Coiffe d'Aermyne / d'Aerruyne) must not be merged silently
+  async function persistReview() { await env.metaPut('scan-review', review); }
+  async function persistLog() { await env.metaPut('scan-log', scanLog.slice(0, 30)); }
+
+  // rows: [{ a, score, rawName, level, type, price, icon }] from the market list
+  async function applyMarket(rows) {
+    const res = { created: 0, updated: 0, review: 0, skipped: 0 };
+    for (const r of rows) {
+      if (!Number.isFinite(r.price) || r.price <= 0) { res.skipped++; continue; }
+      const known = r.a && (items[r.a[0]] || ingredients[r.a[0]]);
+      const jump = known && known.price ? r.price / known.price : 1;
+      const why = !r.a ? 'name not in the game data'
+        : matchVerdict(r.sim, r.nameConf)
+        || (r.priceSure === false ? 'price read differently on each pass' : '')
+        || ((jump > 5 || jump < 0.2) ? 'price changed more than 5x' : '');
+      if (!why) {
+        const { rec, created } = await ensureRec(r.a);
+        await applyPrice(rec, r.price, r.icon);
+        created ? res.created++ : res.updated++;
+      } else {
+        review = review.filter((x) => !(x.rawName === r.rawName && x.level === r.level));
+        review.unshift({ id: nowTs() + Math.random(), rawName: r.rawName, level: r.level, type: r.type, price: r.price, icon: r.icon, suggestion: r.a ? [r.a[0], r.a[1]] : null, why: why, at: nowTs() });
+        res.review++;
+      }
+    }
+    review = review.slice(0, 60);
+    await persistReview(); render(); renderReview();
+    return res;
+  }
+
+  async function applyPopup(p) {
+    const { rec, created } = await ensureRec(p.a, p.name, p.level, null);
+    let next = { ...rec, lots: { ...(rec.lots || {}), ...(p.lots || {}) } };
+    if (Number.isFinite(p.avg) && p.avg > 0) next.avgPrice = p.avg;
+    const lotPrice = priceFromLots(next.lots);
+    if (lotPrice) next = setPrice(next, lotPrice, nowTs());
+    else if (p.avg) next = setPrice(next, p.avg, nowTs());
+    await commit(next); render();
+    return { name: rec.name, created, lots: Object.keys(p.lots || {}).length };
+  }
+
+  async function applyChart(c) {
+    const { rec, created } = await ensureRec(c.a, c.name, c.level, null);
+    const next = { ...rec };
+    if (Number.isFinite(c.sold)) next.sold = c.sold;
+    if (Number.isFinite(c.avg) && c.avg > 0) next.avgPrice = c.avg;
+    if (Number.isFinite(c.median) && c.median > 0) next.medianPrice = c.median;
+    await commit(next); render();
+    return { name: rec.name, created };
+  }
+
+  async function addItemRow(a) { const { rec, created } = await ensureRec(a); open.add(rec.id); render(); return { name: rec.name, created, ingredients: a[4] ? a[4].length : 0 }; }
+
+  async function setBudget(v) {
+    if (!Number.isFinite(v) || v < 0) return null;
+    const prev = budget && budget.value;
+    budget = { value: v, at: nowTs(), prev: prev === undefined ? null : prev, history: ((budget && budget.history) || []).concat([[nowTs(), v]]).slice(-300) };
+    await env.metaPut('budget', budget); renderBudget();
+    return budget;
+  }
+
+  function renderBudget() {
+    const el = $('items-budget'); if (!el) return;
+    if (!budget) { el.textContent = 'Budget: not scanned yet'; return; }
+    const d = budget.prev !== null && budget.prev !== undefined ? budget.value - budget.prev : null;
+    el.innerHTML = 'Budget: <b>' + F(budget.value) + '</b> ' + (d ? '<span class="' + (d > 0 ? 'ok' : 'bad') + '">' + (d > 0 ? '+' : '') + F(d) + '</span> ' : '') + '<span class="mu">(' + new Date(budget.at).toLocaleString('fr-FR') + ')</span>';
+  }
+
+  async function logScan(text) {
+    scanLog.unshift({ at: nowTs(), text }); scanLog = scanLog.slice(0, 30);
+    await persistLog(); renderScanLog();
+  }
+  function renderScanLog() {
+    const el = $('items-scanlog'); if (!el) return;
+    el.innerHTML = scanLog.length ? scanLog.slice(0, 5).map((l) => '<div><span class="mu">' + new Date(l.at).toLocaleTimeString('fr-FR') + '</span> ' + esc(l.text) + '</div>').join('') : '<span class="mu">No scan yet. Set your regions in the Capture tab, then press the hotkey in the game.</span>';
+  }
+
+  function renderReview() {
+    const el = $('items-review'); if (!el) return;
+    el.hidden = !review.length;
+    el.innerHTML = review.length ? '<h4>Needs review (' + review.length + ')</h4>' + review.map((r) => '<div class="rv" data-rv="' + r.id + '">'
+      + (r.icon ? '<img class="icon" alt="" src="' + r.icon + '">' : '<span class="icon">?</span>')
+      + '<input class="rv-name" value="' + esc(r.rawName) + '" aria-label="Item name"><span class="mu">lvl ' + (r.level ?? '?') + ' · ' + F(r.price) + '</span>'
+      + (r.suggestion ? '<button class="btn rv-sugg" type="button">Use “' + esc(r.suggestion[1]) + '”</button>' : '')
+      + '<button class="btn rv-add" type="button">Add as typed</button><button class="btn rv-drop" type="button">Dismiss</button></div>').join('') : '';
+  }
+
+  $('items-review').addEventListener('click', async (e) => {
+    const row = e.target.closest('.rv'); if (!row) return;
+    const r = review.find((x) => String(x.id) === row.dataset.rv); if (!r) return;
+    const P = env.getP();
+    const done = async () => { review = review.filter((x) => x !== r); await persistReview(); renderReview(); render(); };
+    if (e.target.closest('.rv-drop')) return done();
+    if (e.target.closest('.rv-sugg') && r.suggestion && P) {
+      const { rec } = await ensureRec(P.byId[r.suggestion[0]]); await applyPrice(rec, r.price, r.icon); return done();
+    }
+    if (e.target.closest('.rv-add')) {
+      const typed = row.querySelector('.rv-name').value.trim(); if (!typed) return;
+      const hit = P ? env.pickItem(P, typed) : null;
+      const { rec } = await ensureRec(hit, typed, r.level, r.icon);
+      await applyPrice(rec, r.price, r.icon); return done();
+    }
+  });
+
+  async function loadScanState() {
+    review = (await env.metaGet('scan-review')) || [];
+    budget = (await env.metaGet('budget')) || null;
+    scanLog = (await env.metaGet('scan-log')) || [];
+    renderReview(); renderBudget(); renderScanLog();
+  }
+
+  return { load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }

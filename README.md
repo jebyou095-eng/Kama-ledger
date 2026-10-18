@@ -28,6 +28,19 @@ Tabs: Log total, Capture (screen share + OCR), Database (every capture), Recycli
 
 The game data (19 382 items, 4 402 recipes, Datafus) is bundled, so the **Items** tab works immediately.
 
+## Fast collection: scan profile
+
+In the **Capture** tab, share the game window (or load a screenshot), then draw each panel once under **Scan profile**: market list, lot popup, Cours du marché, Recettes, budget, chat. After that, one press of the capture hotkey (default Ctrl+Shift+K) or **Scan now** reads every region you drew and updates the lists cumulatively:
+
+- **Market list:** every row (image, name, level, average price) creates or updates an item or ingredient, keeps the row image, and appends to the price history.
+- **Lot popup:** updates the prices by lot and the average price.
+- **Cours du marché:** articles sold (best effort) and median/average price.
+- **Recettes:** adds the item and its ingredients from the game data.
+- **Budget:** stored with the previous value, shown in the Items tab.
+- **Chat:** purchases and sales go to the ledger (repeats are not duplicated).
+
+Names are matched to the game data using the item level, which repairs most OCR typos. A row is saved by itself only when the name matches the game data and the price was read consistently. Everything else (new items not in Datafus, doubtful prices, a price that moved more than 5x) goes to **Needs review** in the Items tab, where one click accepts, corrects or dismisses it. Keep the game window at the same size and position, or redraw the regions. OCR runs offline (bundled).
+
 ## Items and Ingredients lists
 
 The **Items** tab is your market list. Type an item name to add it: if it has a recipe, its ingredients are added to the Ingredients list too. Each row shows price, value if recycled, value if concassed (brisage), what you can craft with it, and whether crafting is worth it:

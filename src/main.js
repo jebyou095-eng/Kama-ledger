@@ -1,6 +1,9 @@
 import './style.css';
 import JSZip from 'jszip';
 import { initItems } from './items-ui.js';
+import { parseLots } from './items.js';
+import { parseBudget, parseMarketChart, parsePopup, snapItem } from './market.js';
+import * as scan from './scan.js';
 import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
 /*CORE*/
@@ -686,23 +689,25 @@ $('ov').addEventListener('mousedown', function (e) {
 $('ov').addEventListener('mousemove', function (e) {
   if (!dragging) return;
   var r = this.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-  region = {
+  var drawn = {
     x: Math.max(0, Math.min(x, x0)),
     y: Math.max(0, Math.min(y, y0)),
     w: Math.min(1, Math.abs(x - x0)),
     h: Math.min(1, Math.abs(y - y0))
   };
+  if (profileTarget) drawRect = drawn; else region = drawn;
   var g = $('rg');
   g.style.display = 'block';
-  g.style.left = region.x * 100 + '%';
-  g.style.top = region.y * 100 + '%';
-  g.style.width = region.w * 100 + '%';
-  g.style.height = region.h * 100 + '%';
+  g.style.left = drawn.x * 100 + '%';
+  g.style.top = drawn.y * 100 + '%';
+  g.style.width = drawn.w * 100 + '%';
+  g.style.height = drawn.h * 100 + '%';
 });
 $('ov').addEventListener('mouseup', function () {
   dragging = false;
   this.style.pointerEvents = 'none';
   $('rgbtn').textContent = 'Set region';
+  if (profileTarget) finishProfileRegion();
 });
 function grab() {
   var v = $('vid');
@@ -832,9 +837,8 @@ async function readAll() {
   if (!Q.length) { $('ocrst').textContent = 'Queue is empty.'; return; }
   try {
     $('ocrst').textContent = 'Loading OCR engine...';
-    await loadTess();
-    var w = await Tesseract.createWorker('fra');
-    try { await w.setParameters({ tessedit_pageseg_mode: '6' }); } catch (e) {}
+    var w = await scan.getWorker();
+    await w.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
     var caps = [];
     for (var i = 0; i < Q.length; i++) {
       $('ocrst').textContent = 'Reading ' + (i + 1) + ' / ' + Q.length;
@@ -842,7 +846,6 @@ async function readAll() {
       caps.push(ocrToLines(r.data.text));
       if (Q[i].id != null) await dbUpdate(Q[i].id, { text: r.data.text });
     }
-    await w.terminate();
     var s = stitch(caps);
     var panel = analyzePanel(s.lines, $('capture-region-label').value);
     var transactions = panel.panel === 'chat' ? panel.transactions : [];
@@ -1267,7 +1270,7 @@ $('bi').addEventListener('change', fillBrisage);
 var itemsUi = null;
 itemsUi = initItems({
   $: $, F: F, num: num, esc: esc, normName: normName, pickItem: pickItem,
-  getDB: function () { return DB; }, getP: function () { return P; },
+  getDB: function () { return DB; }, getP: function () { return P; }, metaGet: metaGet, metaPut: metaPut,
   netP: netP, taxMode: function () { return $('rnd').value; },
   fillList: fillList,
   getOcrText: function () { return $('ocrtext').value; },
@@ -1288,6 +1291,144 @@ show(st);
 
 window.$ = $;
 window.show = show;
+
+/* ---- scan profile: named regions drawn once, then one key press reads them all ---- */
+var PROFILE_TYPES = [
+  ['market', 'Market list (rows: image, name, level, average price)'],
+  ['popup', 'Lot popup (prices by lot)'],
+  ['chart', 'Cours du marché (articles vendus)'],
+  ['recipe', 'Recettes window (item to craft)'],
+  ['budget', 'Budget (kamas in inventory)'],
+  ['chat', 'Chat (purchases and sales)']
+];
+var profile = {}, profileTarget = null, drawRect = null, scanning = false, stillFrame = null;
+try { profile = JSON.parse(localStorage.getItem('kl-profile') || '{}') || {}; } catch (e) { profile = {}; }
+function saveProfile() { try { localStorage.setItem('kl-profile', JSON.stringify(profile)); } catch (e) {} }
+function profileKeys() { return PROFILE_TYPES.map(function (t) { return t[0]; }).filter(function (k) { return profile[k]; }); }
+function showPreviewArea() { $('vw').style.display = 'block'; }
+function renderProfile() {
+  $('profile-list').innerHTML = PROFILE_TYPES.map(function (t) {
+    var set = !!profile[t[0]];
+    return '<div class="profile-row"><span class="swatch" data-k="' + t[0] + '"></span><span>' + esc(t[1]) + '</span><span class="mu">' + (set ? 'set' : 'not set') + '</span>'
+      + '<button class="btn" type="button" data-set="' + t[0] + '">' + (set ? 'Redraw' : 'Draw') + '</button>'
+      + (set ? '<button class="btn" type="button" data-clear="' + t[0] + '">Clear</button>' : '') + '</div>';
+  }).join('');
+  var boxes = $('pboxes'); boxes.innerHTML = '';
+  profileKeys().forEach(function (k, i) {
+    var r = profile[k], d = document.createElement('div');
+    d.className = 'pbox'; d.style.cssText = 'left:' + r.x * 100 + '%;top:' + r.y * 100 + '%;width:' + r.w * 100 + '%;height:' + r.h * 100 + '%;';
+    d.innerHTML = '<span>' + esc(k) + '</span>'; boxes.appendChild(d);
+  });
+}
+$('profile-list').addEventListener('click', function (e) {
+  var set = e.target.closest('[data-set]'), clr = e.target.closest('[data-clear]');
+  if (clr) { delete profile[clr.dataset.clear]; saveProfile(); renderProfile(); return; }
+  if (!set) return;
+  if (!stream && !stillFrame) { $('scan-status').textContent = 'Share the game window first, or load a screenshot to draw on.'; return; }
+  profileTarget = set.dataset.set; drawRect = null;
+  showPreviewArea();
+  $('ov').style.pointerEvents = 'auto';
+  $('scan-status').textContent = 'Drag a rectangle around the ' + profileTarget + ' area on the preview.';
+});
+function finishProfileRegion() {
+  var key = profileTarget; profileTarget = null;
+  $('rg').style.display = 'none';
+  if (drawRect && drawRect.w > 0.01 && drawRect.h > 0.01) {
+    profile[key] = { x: drawRect.x, y: drawRect.y, w: drawRect.w, h: drawRect.h };
+    saveProfile();
+    $('scan-status').textContent = key + ' region saved.';
+  }
+  renderProfile();
+}
+$('scan-still').addEventListener('change', function () {
+  var f = this.files && this.files[0]; this.value = '';
+  if (!f) return;
+  var r = new FileReader();
+  r.onload = function () {
+    scan.frameFromUrl(r.result).then(function (c) {
+      stillFrame = c; $('vid').poster = r.result; showPreviewArea();
+      $('scan-status').textContent = 'Screenshot loaded (' + c.width + 'x' + c.height + '). Draw your regions on it.';
+    });
+  };
+  r.readAsDataURL(f);
+});
+$('scan-file').addEventListener('change', async function () {
+  var files = [].slice.call(this.files); this.value = '';
+  for (var i = 0; i < files.length; i++) {
+    var url = await new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(files[i]); });
+    await scanFrame(await scan.frameFromUrl(url));
+  }
+});
+$('scan-now').addEventListener('click', function () { scanNow(); });
+function scanNow() {
+  var frame = stream ? scan.frameFromVideo($('vid')) : stillFrame;
+  if (!frame) { $('scan-status').textContent = 'Nothing to scan: share the game window first.'; return Promise.resolve(); }
+  return scanFrame(frame);
+}
+function bestNameInLines(lines, minScore) {
+  var best = null;
+  lines.slice(0, 10).forEach(function (l) {
+    var s = snapItem(P, l, NaN, '');
+    if (s && s.score >= minScore && (!best || s.score > best.score)) best = s;
+  });
+  return best;
+}
+async function scanFrame(frame) {
+  if (scanning) { $('scan-status').textContent = 'A scan is already running.'; return; }
+  var keys = profileKeys();
+  if (!keys.length) { $('scan-status').textContent = 'Draw at least one region first.'; return; }
+  scanning = true;
+  var out = [], types = P ? Object.values(P.idx.types) : [];
+  $('scan-status').textContent = 'Scanning ' + keys.join(', ') + '...';
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    try {
+      if (k === 'market') {
+        var m = await scan.readMarketList(frame, profile.market, types);
+        var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
+        window.klLastScan = { market: m.rows };
+        var res = await itemsUi.applyMarket(rows);
+        out.push('Market ' + rows.length + ' rows: ' + res.created + ' new, ' + res.updated + ' updated' + (res.review ? ', ' + res.review + ' to review' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
+      } else if (k === 'popup') {
+        var pl = await scan.readText(frame, profile.popup, 'white');
+        var pop = parsePopup(pl), lots = parseLots(pl.join('\n'));
+        if (pop.name.length < 3 || (!Object.keys(lots).length && !pop.avg)) { out.push('Popup: could not read it'); continue; }
+        window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
+        var ps = P ? snapItem(P, pop.name, pop.level, pop.type) : null;
+        var pr = await itemsUi.applyPopup({ a: ps && ps.score >= 0.9 ? ps.item : null, name: pop.name, level: pop.level, avg: pop.avg, lots: lots });
+        out.push('Popup ' + pr.name + ': ' + pr.lots + ' lot price(s)' + (pr.created ? ' (new)' : ''));
+      } else if (k === 'chart') {
+        var cl = await scan.readText(frame, profile.chart, 'white');
+        var ch = parseMarketChart(cl), cn = P ? bestNameInLines(cl, 0.8) : null;
+        if (!cn) { out.push('Cours du marché: item name not recognised'); continue; }
+        await itemsUi.applyChart({ a: cn.item, sold: ch.sold, avg: ch.avg, median: ch.median });
+        out.push('Cours du marché ' + cn.item[1] + ': ' + (ch.sold !== null ? ch.sold + ' sold' : 'no “articles vendus” found'));
+      } else if (k === 'recipe') {
+        var rl = await scan.readText(frame, profile.recipe, 'white');
+        var rn = P ? bestNameInLines(rl, 0.85) : null;
+        if (!rn) { out.push('Recettes: item name not recognised'); continue; }
+        var ar = await itemsUi.addItemRow(rn.item);
+        out.push('Recettes: ' + ar.name + (ar.created ? ' added with ' + ar.ingredients + ' ingredients' : ' already listed'));
+      } else if (k === 'budget') {
+        var bv = parseBudget(await scan.readNumber(frame, profile.budget));
+        if (bv === null) { out.push('Budget: unreadable'); continue; }
+        await itemsUi.setBudget(bv);
+        out.push('Budget ' + F(bv));
+      } else if (k === 'chat') {
+        var cl2 = await scan.readText(frame, profile.chat, 'grey');
+        var tx = transactionLines(cl2.map(normalizeTransactionLine));
+        if (tx.length) await saveLedgerTransactions(tx, ['chat-' + new Date().toISOString().slice(0, 10)]);
+        out.push('Chat: ' + tx.length + ' purchase/sale line(s) saved');
+      }
+    } catch (e) { out.push(k + ': ' + e.message); }
+  }
+  scanning = false;
+  var text = out.join(' · ');
+  $('scan-status').textContent = 'Done. ' + text;
+  await itemsUi.logScan(text);
+  recordAction('scan');
+}
+renderProfile();
 /* ---- capture hotkey (desktop app) ---- */
 var DEFAULT_HOTKEY = 'CommandOrControl+Shift+K';
 var hotkeyRecording = false;
@@ -1318,6 +1459,7 @@ function beep() {
   } catch (e) {}
 }
 function hotkeyCapture() {
+  if (profileKeys().length) { beep(); return scanNow(); }
   if (!stream) { $('hotkey-status').textContent = 'Hotkey pressed, but no screen or window is being shared yet. Share the game window first.'; return Promise.resolve(null); }
   var canvas = grab();
   if (!canvas) { $('hotkey-status').textContent = 'The shared window has no picture yet.'; return Promise.resolve(null); }
