@@ -1195,9 +1195,20 @@ async function finish(idx, warn) {
   $('dstat').innerHTML += (ok ? ' Saved in this browser.' : ' <span class="bad">Could not save in this browser, it will need loading again next time (use Export compact file).</span>') + (warn ? ' <span class="bad">' + esc(warn) + '</span>' : '');
 }
 async function dataClear() {
-  if (!confirm('Remove the saved game data from this browser?')) return;
-  await metaDel('index'); P = null; CRAFT = null; setStat('No data loaded.'); $('dres').innerHTML = ''; craftRender(); if ($('log').value) runLog();
+  if (!confirm('Remove the saved game data and go back to the data shipped with the app?')) return;
+  await metaDel('index');
+  location.reload();
 }
+async function resetEverything() {
+  if (!confirm('Erase ALL Kama Ledger data on this computer (items, ingredients, prices, ledger, captures, scan regions, settings) and start fresh? This cannot be undone.')) return;
+  try { if (DB) DB.close(); } catch (e) {}
+  await new Promise(function (res) {
+    try { var r = indexedDB.deleteDatabase('kama-ledger'); r.onsuccess = r.onerror = r.onblocked = function () { res(); }; } catch (e) { res(); }
+  });
+  try { localStorage.clear(); } catch (e) {}
+  location.reload();
+}
+window.resetEverything = resetEverything;
 function dataExport() {
   if (!P) { alert('Load data first.'); return; }
   var a = document.createElement('a');
@@ -1278,9 +1289,12 @@ itemsUi = initItems({
   openBrisage: function (name) { $('bi').value = name; fillBrisage(); show('bri'); }
 });
 dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return loadUnclassifiedCaptures(); }).then(function () { return metaGet('index'); }).then(async function (x) {
-  if (!x) {
-    try { x = (await import('./data/kama-data.json')).default; if (x) metaPut('index', x); } catch (e) { x = null; }
-  }
+  // The game data shipped with the app wins unless the saved copy is strictly newer: an older saved copy
+  // (from an earlier version of the app) used to hide the bundled data and caused wrong matches.
+  var bundled = null;
+  try { bundled = (await import('./data/kama-data.json')).default; } catch (e) { bundled = null; }
+  var usable = function (d) { return d && Array.isArray(d.items) && d.items.length > 1000 && d.types && d.effs; };
+  if (usable(bundled) && (!usable(x) || String(x.built || '') <= String(bundled.built || ''))) { x = bundled; metaPut('index', x); }
   if (x) setIdx(x);
   return itemsUi.load();
 });

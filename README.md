@@ -21,6 +21,10 @@ The original single-file version remains available at `kama-ledger.html` for Chr
 
 Tabs: Log total, Capture (screen share + OCR), Database (every capture), Recycling, Sell & tax, Brisage, Craft, Data.
 
+## Starting clean
+
+The app keeps its data in your Windows profile, so an update never loses it, but an older saved copy can get in the way. The game data shipped with the app now always replaces an older saved copy. For a full fresh start use **Data tab → Erase ALL app data**, or close the app and run **Reset Kama Ledger data.bat**.
+
 ## Launching the app (Windows)
 
 1. Install Node.js (LTS) once from https://nodejs.org.
