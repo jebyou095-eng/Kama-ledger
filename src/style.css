@@ -295,3 +295,8 @@ td input { padding: 4px 6px; }
 .rv .icon { background: #11182b; color: #9fb0d6; width: 32px; height: 32px; border-radius: 5px; object-fit: cover; display: grid; place-items: center; }
 .rv .rv-name { min-width: 220px; }
 img.icon { object-fit: cover; }
+
+.ctree,.ctree ul{list-style:none;margin:.2em 0;padding-left:1.1em;border-left:1px solid rgba(255,255,255,.18)}
+.ctree{border-left:0;padding-left:0}.ctree li{padding:.1em 0}.ctree .tn{font-weight:600}
+.tag-edited{font-size:.75em;background:#8a5a00;color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px}
+.f-more{display:block;margin:12px auto}

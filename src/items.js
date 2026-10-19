@@ -138,3 +138,14 @@ export function evaluate(rec, ctx) {
   }
   return out;
 }
+
+// Craft tree: item -> ingredients -> their own ingredients (when they are craftable too).
+// rowOf(id) returns the compact index row (recipe at [4]); priceOf(id) the tracked price or null; nameOf(id) the name.
+export function buildTree(id, qty, rowOf, priceOf, nameOf, depth = 3, seen = []) {
+  const row = rowOf(id), price = priceOf(id);
+  const node = { id, name: nameOf(id), qty, price, subtotal: price ? price * qty : null, children: [] };
+  if (depth > 0 && row && row[4] && !seen.includes(id)) {
+    node.children = row[4].map((g) => buildTree(g[0], g[1], rowOf, priceOf, nameOf, depth - 1, seen.concat(id)));
+  }
+  return node;
+}

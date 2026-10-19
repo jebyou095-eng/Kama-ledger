@@ -33,7 +33,7 @@
           <label>Add an item or ingredient<input id="items-add" list="items-dl" autocomplete="off" placeholder="e.g. Marteau d'Ivoire"></label><datalist id="items-dl"></datalist>
           <button class="btn primary-button" id="items-add-btn" type="button">Add</button>
           <label>Search<input id="items-search" placeholder="filter list"></label>
-          <label>Show<select id="items-kind"><option value="all">All</option><option value="item">Items only</option><option value="ingredient">Ingredients only</option></select></label>
+          <label>Show<select id="items-kind"><option value="all">All</option><option value="item">Items only</option><option value="ingredient">Ingredients only</option><option value="craft">Crafts (items with a recipe)</option><option value="recycle">Recycles (pépites known)</option><option value="brisage">Brisage (concass value known)</option></select></label>
           <label>Colour<select id="items-filter"><option value="all">All</option><option value="go">Green</option><option value="neutral">Grey</option><option value="loss">Red</option><option value="unknown">No data</option></select></label>
           <label>Sort<select id="items-sort"><option value="best">Best first</option><option value="name">Name</option><option value="old">Oldest price</option></select></label>
           <label>Grey if within ±%<input id="items-band" size="3" inputmode="numeric"></label>
@@ -100,7 +100,7 @@
           <strong>Scan profile</strong>
           <p class="mu">Draw each panel once on the shared game window (or on a screenshot). After that, the hotkey scans every region you set and fills Items and Ingredients by itself. Keep the game window at the same size and position, otherwise redraw the regions.</p>
           <div id="profile-list"></div>
-          <div class="row"><button class="btn primary-button" id="scan-now" type="button">Scan now</button><label class="btn">Load a screenshot to draw on…<input id="scan-still" type="file" accept="image/*" hidden></label><label class="btn">Scan screenshot file(s)…<input id="scan-file" type="file" accept="image/*" multiple hidden></label><span id="scan-status" class="mu" aria-live="polite"></span></div>
+          <div class="row"><button class="btn primary-button" id="scan-now" type="button">Scan now</button><label class="btn">Load a screenshot to draw on…<input id="scan-still" type="file" accept="image/*" hidden></label><label class="btn">Scan screenshot file(s)…<input id="scan-file" type="file" accept="image/*" multiple hidden></label><label class="btn"><input type="checkbox" id="live-scan"> Live scan while I play</label><span id="scan-status" class="mu" aria-live="polite"></span></div>
         </div>
         <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="pboxes" style="position:absolute;inset:0;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
         <p class="mu">Queue: <b id="qn">0</b> capture(s)</p>

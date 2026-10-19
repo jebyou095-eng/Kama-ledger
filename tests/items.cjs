@@ -58,3 +58,14 @@ const assert = require('node:assert/strict');
   assert.equal(untracked.uses[0].tracked, false);
   console.log('items logic checks passed');
 })().catch((e) => { console.error(e); process.exitCode = 1; });
+(async () => {
+  const { buildTree } = await import('../src/items.js');
+  const rows = { 1: [1, 'Chapeau', 1, 1, [[2, 3], [3, 1]], []], 2: [2, 'Fil', 1, 1, [[3, 2]], []], 3: [3, 'Laine', 1, 1, 0, []] };
+  const t = buildTree(1, 1, (i) => rows[i], (i) => ({ 3: 10 }[i] || null), (i) => rows[i][1]);
+  require('node:assert/strict').equal(t.children.length, 2);
+  require('node:assert/strict').equal(t.children[0].children[0].subtotal, 20);
+  rows[3][4] = [[1, 1]]; // cycle: must stop
+  const c = buildTree(1, 1, (i) => rows[i], () => null, (i) => rows[i][1], 6);
+  require('node:assert/strict').ok(JSON.stringify(c).length < 5000);
+  console.log('tree checks passed');
+})();

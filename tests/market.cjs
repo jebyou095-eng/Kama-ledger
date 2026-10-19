@@ -50,3 +50,12 @@ const assert = require('node:assert/strict');
   assert.match(m.matchVerdict(0.8, 70), /uncertain/);
   console.log('market reader checks passed');
 })().catch((e) => { console.error(e); process.exitCode = 1; });
+(async () => {
+  const { cleanName } = await import('../src/market.js');
+  const assert = require('node:assert/strict');
+  assert.equal(cleanName("Coiffe d'Aerruyne"), "Coiffe d'Aerruyne");
+  assert.equal(cleanName("| Coiffe de Rhine ©"), "Coiffe de Rhine");
+  assert.equal(cleanName("Ï xx |"), '');
+  assert.equal(cleanName("Heaume Clochecuivre ®"), 'Heaume Clochecuivre');
+  console.log('name clean-up checks passed');
+})();

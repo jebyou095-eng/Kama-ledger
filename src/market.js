@@ -164,3 +164,18 @@ export function matchVerdict(score, nameConf) {
   if (Number.isFinite(nameConf) && nameConf >= CONFIDENT_READ) return 'clean read differs from the game data: newer item with a similar name?';
   return '';
 }
+
+// Drops OCR noise from a name: stray symbols, one-letter fragments, and tokens with no vowel.
+// Returns '' when nothing readable is left (so gibberish never reaches the lists).
+export function cleanName(raw) {
+  const toks = String(raw || '').replace(/[|_~=<>{}\[\]\\^*#@©®●•»«]/g, ' ').split(/\s+/).filter(Boolean);
+  const keep = toks.filter((t) => {
+    if (/^(de|du|d'|la|le|les|des|et|à|au|aux)$/i.test(t) || /^d'/i.test(t) || /^l'/i.test(t)) return true;
+    const l = t.replace(/[^A-Za-zÀ-ÿ]/g, '');
+    if (l.length < 2) return false;
+    if (l.length / t.length < 0.7) return false;
+    return /[aeiouyàâéèêëîïôöùûü]/i.test(l);
+  });
+  const out = keep.join(' ').trim();
+  return out.replace(/[^A-Za-zÀ-ÿ]/g, '').length >= 3 ? out : '';
+}

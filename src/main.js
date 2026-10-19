@@ -1379,6 +1379,28 @@ function scanNow() {
   if (!frame) { $('scan-status').textContent = 'Nothing to scan: share the game window first.'; return Promise.resolve(); }
   return scanFrame(frame);
 }
+/* ---- live scan: watches the shared window, scans each new screen once it has settled ---- */
+var liveTimer = null, liveLast = null, livePrev = null;
+async function liveTick() {
+  if (!$('live-scan').checked || !stream || scanning) return;
+  var frame = scan.frameFromVideo($('vid'));
+  if (!frame) return;
+  var sig = scan.signature(frame);
+  var moving = scan.sigDiff(sig, livePrev) > 2.5;   // still changing: wait until the picture holds still
+  livePrev = sig;
+  if (moving || scan.sigDiff(sig, liveLast) < 4) return;   // unchanged since the last scan
+  liveLast = sig;
+  var r = await scanFrame(frame);   // every frame is read on its own, nothing is merged between frames
+  if (r && r.empty) $('scan-status').textContent = 'Live scan on: waiting for a market, lot, recipe or chat panel...';
+}
+$('live-scan').addEventListener('change', function () {
+  clearInterval(liveTimer); liveLast = null; livePrev = null;
+  if (this.checked) {
+    if (!stream) { this.checked = false; $('scan-status').textContent = 'Share the game window first.'; return; }
+    liveTimer = setInterval(function () { liveTick().catch(function () {}); }, 1200);
+    $('scan-status').textContent = 'Live scan on.';
+  }
+});
 function bestNameInLines(lines, minScore) {
   var best = null;
   lines.slice(0, 10).forEach(function (l) {
@@ -1389,22 +1411,27 @@ function bestNameInLines(lines, minScore) {
 }
 async function scanFrame(frame) {
   if (scanning) { $('scan-status').textContent = 'A scan is already running.'; return; }
-  var keys = profileKeys();
-  if (!keys.length) { $('scan-status').textContent = 'Draw at least one region first.'; return; }
   scanning = true;
+  var prof = profile;
+  if (!profileKeys().length) {
+    $('scan-status').textContent = 'Looking for the game panels...';
+    try { prof = await scan.autoDetect(frame); } catch (e) { scanning = false; $('scan-status').textContent = 'Could not read the screen: ' + e.message; return; }
+  }
+  var keys = PROFILE_TYPES.map(function (t) { return t[0]; }).filter(function (k) { return prof[k]; });
+  if (!keys.length) { scanning = false; $('scan-status').textContent = 'No game panel on screen (open the market, a lot, Recettes or the chat).'; return { empty: true }; }
   var out = [], types = P ? Object.values(P.idx.types) : [];
   $('scan-status').textContent = 'Scanning ' + keys.join(', ') + '...';
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
     try {
       if (k === 'market') {
-        var m = await scan.readMarketList(frame, profile.market, types);
+        var m = await scan.readMarketList(frame, prof.market, types, prof._layout && prof._layout.market);
         var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
         window.klLastScan = { market: m.rows };
         var res = await itemsUi.applyMarket(rows);
         out.push('Market ' + rows.length + ' rows: ' + res.created + ' new, ' + res.updated + ' updated' + (res.review ? ', ' + res.review + ' to review' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
       } else if (k === 'popup') {
-        var pl = await scan.readText(frame, profile.popup, 'white');
+        var pl = await scan.readText(frame, prof.popup, 'white');
         var pop = parsePopup(pl), lots = parseLots(pl.join('\n'));
         if (pop.name.length < 3 || (!Object.keys(lots).length && !pop.avg)) { out.push('Popup: could not read it'); continue; }
         window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
@@ -1412,24 +1439,24 @@ async function scanFrame(frame) {
         var pr = await itemsUi.applyPopup({ a: ps && ps.score >= 0.9 ? ps.item : null, name: pop.name, level: pop.level, avg: pop.avg, lots: lots });
         out.push('Popup ' + pr.name + ': ' + pr.lots + ' lot price(s)' + (pr.created ? ' (new)' : ''));
       } else if (k === 'chart') {
-        var cl = await scan.readText(frame, profile.chart, 'white');
+        var cl = await scan.readText(frame, prof.chart, 'white');
         var ch = parseMarketChart(cl), cn = P ? bestNameInLines(cl, 0.8) : null;
         if (!cn) { out.push('Cours du marché: item name not recognised'); continue; }
         await itemsUi.applyChart({ a: cn.item, sold: ch.sold, avg: ch.avg, median: ch.median });
         out.push('Cours du marché ' + cn.item[1] + ': ' + (ch.sold !== null ? ch.sold + ' sold' : 'no “articles vendus” found'));
       } else if (k === 'recipe') {
-        var rl = await scan.readText(frame, profile.recipe, 'white');
+        var rl = await scan.readText(frame, prof.recipe, 'white');
         var rn = P ? bestNameInLines(rl, 0.85) : null;
         if (!rn) { out.push('Recettes: item name not recognised'); continue; }
         var ar = await itemsUi.addItemRow(rn.item);
         out.push('Recettes: ' + ar.name + (ar.created ? ' added with ' + ar.ingredients + ' ingredients' : ' already listed'));
       } else if (k === 'budget') {
-        var bv = parseBudget(await scan.readNumber(frame, profile.budget));
+        var bv = parseBudget(await scan.readNumber(frame, prof.budget));
         if (bv === null) { out.push('Budget: unreadable'); continue; }
         await itemsUi.setBudget(bv);
         out.push('Budget ' + F(bv));
       } else if (k === 'chat') {
-        var cl2 = await scan.readText(frame, profile.chat, 'grey');
+        var cl2 = await scan.readText(frame, prof.chat, 'grey');
         var tx = transactionLines(cl2.map(normalizeTransactionLine));
         if (tx.length) await saveLedgerTransactions(tx, ['chat-' + new Date().toISOString().slice(0, 10)]);
         out.push('Chat: ' + tx.length + ' purchase/sale line(s) saved');
@@ -1473,7 +1500,7 @@ function beep() {
   } catch (e) {}
 }
 function hotkeyCapture() {
-  if (profileKeys().length) { beep(); return scanNow(); }
+  if (profileKeys().length || stream || stillFrame) { beep(); return scanNow(); }
   if (!stream) { $('hotkey-status').textContent = 'Hotkey pressed, but no screen or window is being shared yet. Share the game window first.'; return Promise.resolve(null); }
   var canvas = grab();
   if (!canvas) { $('hotkey-status').textContent = 'The shared window has no picture yet.'; return Promise.resolve(null); }

@@ -15,7 +15,7 @@
     "build:icon": "node scripts/generate-icon.js",
     "package:win": "npm run build:icon && npm run build && electron-builder --win nsis --publish never",
     "package:portable": "npm run build:icon && npm run build && electron-builder --win portable --publish never",
-    "test": "node tests/run-tests.cjs && node tests/transactions.cjs && node tests/items.cjs && node tests/market.cjs"
+    "test": "node tests/run-tests.cjs && node tests/transactions.cjs && node tests/items.cjs && node tests/market.cjs && node tests/detect.cjs"
   },
   "devDependencies": {
     "electron": "^44.9.0",

@@ -1,10 +1,11 @@
-import { matchVerdict } from './market.js';
+import { buildTree } from './items.js';
+import { matchVerdict, cleanName } from './market.js';
 import { EASY_SOLD, LOT_SIZES, NEUTRAL_BAND, STALE_DAYS, evaluate, isStale, newEntry, parseLots, priceAgeDays, priceFromLots, reverseRecipes, setPrice, unitPrices } from './items.js';
 
 // Items / Ingredients tab. Data is stored in IndexedDB object stores named "Items" and "Ingredients".
 export function initItems(env) {
   const { $, F, num, esc } = env;
-  let items = {}, ingredients = {}, usedIn = {}, usedFor = null;
+  let items = {}, ingredients = {}, usedIn = {}, usedFor = null, usedSig = '', effById = null, shown = 80;
   const open = new Set();
   const get = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
   const put = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -37,8 +38,14 @@ export function initItems(env) {
 
   function ctx() {
     const P = env.getP();
-    if (P && usedFor !== P) { usedIn = reverseRecipes(P.idx.items); usedFor = P; }
-    return { byId: P ? P.byId : {}, ingredients, items, usedIn, pepiteNet: env.netP(), taxMode: env.taxMode(), band, easyFrom };
+    const ov = Object.values(items).filter((r) => r.recipe);
+    const sig = ov.map((r) => r.id + ':' + JSON.stringify(r.recipe)).join('|');
+    if (P && (usedFor !== P || usedSig !== sig)) {
+      const list = ov.length ? P.idx.items.map((it) => { const o = items[it[0]] && items[it[0]].recipe; return o ? [it[0], it[1], it[2], it[3], o, it[5]] : it; }) : P.idx.items;
+      usedIn = reverseRecipes(list); usedFor = P; usedSig = sig;
+      effById = ov.length ? Object.assign(Object.create(P.byId), Object.fromEntries(ov.map((r) => { const b = P.byId[r.id]; return [r.id, b ? [b[0], b[1], b[2], b[3], r.recipe, b[5]] : [r.id, r.name, r.level, r.typeId, r.recipe, []]]; }))) : P.byId;
+    }
+    return { byId: effById || (P ? P.byId : {}), ingredients, items, usedIn, pepiteNet: env.netP(), taxMode: env.taxMode(), band, easyFrom };
   }
   const typeName = (rec) => { const P = env.getP(); return P ? (P.idx.types[rec.typeId] || '') : ''; };
   const initials = (n) => String(n).replace(/[^\p{L}\p{N} ]/gu, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
@@ -88,7 +95,7 @@ export function initItems(env) {
     const o = open.has(rec.id), P = env.getP();
     const craftWith = rec.kind === 'ingredient'
       ? (ev.uses.length ? ev.uses.slice(0, 2).map((u) => esc(u.name) + (u.profit !== null ? ' <b class="' + (u.profit >= 0 ? 'ok' : 'bad') + '">' + money(u.profit, true) + '</b>' : '')).join('<br>') + (ev.uses.length > 2 ? '<br><small>+' + (ev.uses.length - 2) + ' more</small>' : '') : '<small>not used in recipes</small>')
-      : '<small>' + ((P && P.byId[rec.id] && P.byId[rec.id][4]) ? P.byId[rec.id][4].length + ' ingredients' : '') + '</small>';
+      : '<small>' + ((P && ctx().byId[rec.id] && ctx().byId[rec.id][4]) ? ctx().byId[rec.id][4].length + ' ingredients' : '') + '</small>';
     const benefit = rec.kind === 'item'
       ? (ev.craft !== null ? '<b>' + money(ev.craft, true) + '</b><small>' + ({ go: 'worth crafting', neutral: 'cost = profit', loss: 'loss if crafted' }[ev.status]) + '</small>'
         : '<small>' + (ev.missing.length ? ev.missing.length + ' ingredient price(s) missing' : 'enter the price') + '</small>')
@@ -105,11 +112,21 @@ export function initItems(env) {
       + '</div>' + (o ? detailHtml(rec, ev) : '') + '</article>';
   }
 
+  function treeHtml(rec, c0) {
+    const P = env.getP(); if (!P) return '';
+    const t = buildTree(rec.id, 1, (id) => c0.byId[id], (id) => { const r = ingredients[id] || items[id]; return r && r.price ? r.price : null; }, (id) => (P.byId[id] ? P.byId[id][1] : (ingredients[id] || items[id] || { name: '#' + id }).name));
+    const li = (n, top) => '<li><span class="tn">' + (top ? '' : n.qty + ' × ') + esc(n.name) + '</span>' + (n.price ? ' <small>' + F(n.price) + ' each' + (n.qty > 1 && !top ? ' = ' + F(n.subtotal) : '') + '</small>' : (top ? '' : ' <small class="bad">no price</small>')) + (n.children.length ? '<ul>' + n.children.map((k) => li(k, false)).join('') + '</ul>' : '') + '</li>';
+    return '<ul class="ctree">' + li(t, true) + '</ul>';
+  }
+  function iconControl(rec) {
+    return '<div class="row"><label class="btn">' + (rec.icon ? 'Change image' : 'Upload image') + '<input class="f-img" type="file" accept="image/*" hidden></label>' + (rec.icon ? '<button class="btn f-imgdel" type="button">Remove image</button>' : '') + '</div>';
+  }
+
   function detailHtml(rec, ev) {
-    const P = env.getP(), row = P && P.byId[rec.id];
+    const P = env.getP(), c0 = ctx(), row = P && c0.byId[rec.id];
     const lots = LOT_SIZES.map((s) => '<label>' + (s === 1000 ? '1 000' : s) + ' <input class="f-lot" data-size="' + s + '" inputmode="numeric" value="' + (rec.lots && rec.lots[s] ? F(rec.lots[s]) : '') + '"></label>').join('');
     const per = unitPrices(rec.lots).map((u) => (u.size === 1000 ? '1 000' : u.size) + ' → ' + F(u.unit) + '/unit').join(' · ');
-    let body = '<div class="idetail">';
+    let body = '<div class="idetail">' + iconControl(rec);
     body += '<div class="dgrid"><div><h4>Prices by lot</h4><div class="lots">' + lots + '</div><p class="mu">' + (per || 'Type the 4 lot prices, or paste the popup text below.') + '</p>'
       + '<textarea class="f-paste" rows="3" placeholder="Paste the lot popup text (1 29 / 10 444 / 100 4 899 / 1 000 29 877)"></textarea>'
       + '<div class="row"><button class="btn f-readlots" type="button">Read lots</button><button class="btn f-ocr" type="button">Use last capture text</button></div></div>'
@@ -121,10 +138,12 @@ export function initItems(env) {
       + '<div class="row"><button class="btn f-bri" type="button">Open in Brisage</button><button class="btn f-bri-use" type="button">Use Brisage tab value</button></div>'
       + '<p class="mu">Recycled value = Pépites × net Pépite price (Recycling tab). Easy to sell = articles sold ≥ ' + easyFrom + '.</p></div></div>';
     if (rec.kind === 'item' && row && row[4]) {
-      body += '<h4>Ingredients (prices are shared with the Ingredients list)</h4><table class="itab"><thead><tr><th>Ingredient</th><th>Qty</th><th>Price / unit</th><th>Subtotal</th><th>Updated</th></tr></thead><tbody>'
-        + row[4].map((g) => { const ig = ingredients[g[0]] || items[g[0]], it = P.byId[g[0]]; const pr = ig && ig.price;
-          return '<tr data-ing="' + g[0] + '"><td>' + esc(it ? it[1] : '#' + g[0]) + '</td><td>' + g[1] + '</td><td><input class="f-ing" inputmode="numeric" value="' + (pr ? F(pr) : '') + '"></td><td>' + (pr ? F(pr * g[1]) : '–') + '</td><td>' + (ig ? age(ig) : '') + '</td></tr>'; }).join('')
-        + '</tbody></table><p>Craft cost: <b>' + (ev.cost !== null ? F(ev.cost) : '–') + '</b>' + (rec.price ? ' · net after 2% tax: <b>' + F(rec.price - Math.round(rec.price * 0.02)) + '</b>' : '') + (ev.craft !== null ? ' · profit: <b class="' + (ev.craft >= 0 ? 'ok' : 'bad') + '">' + money(ev.craft, true) + '</b>' : '') + '</p>';
+      body += '<h4>Ingredients ' + (rec.recipe ? '<span class="tag-edited">recipe edited by you</span>' : '<span class="mu">(game data, Dec 2024 — edit if it changed)</span>') + '</h4><table class="itab"><thead><tr><th>Ingredient</th><th>Qty</th><th>Price / unit</th><th>Subtotal</th><th>Updated</th><th></th></tr></thead><tbody>'
+        + row[4].map((g, i) => { const ig = ingredients[g[0]] || items[g[0]], it = P.byId[g[0]]; const pr = ig && ig.price;
+          return '<tr data-ing="' + g[0] + '" data-i="' + i + '"><td>' + esc(it ? it[1] : (ig ? ig.name : '#' + g[0])) + '</td><td><input class="f-qty" size="4" inputmode="numeric" value="' + g[1] + '"></td><td><input class="f-ing" inputmode="numeric" value="' + (pr ? F(pr) : '') + '"></td><td>' + (pr ? F(pr * g[1]) : '–') + '</td><td>' + (ig ? age(ig) : '') + '</td><td><button class="btn f-rdel" type="button" title="Remove this ingredient">✕</button></td></tr>'; }).join('')
+        + '</tbody></table><div class="row"><input class="f-radd" list="items-dl" placeholder="Add an ingredient to this recipe"><input class="f-raddq" size="3" inputmode="numeric" value="1"><button class="btn f-raddb" type="button">Add</button>' + (rec.recipe ? '<button class="btn f-rreset" type="button">Back to game data</button>' : '') + '</div>'
+        + '<p>Craft cost: <b>' + (ev.cost !== null ? F(ev.cost) : '–') + '</b>' + (rec.price ? ' · net after 2% tax: <b>' + F(rec.price - Math.round(rec.price * 0.02)) + '</b>' : '') + (ev.craft !== null ? ' · profit: <b class="' + (ev.craft >= 0 ? 'ok' : 'bad') + '">' + money(ev.craft, true) + '</b>' : '') + '</p>'
+        + '<h4>Craft tree</h4>' + treeHtml(rec, c0);
     }
     if (rec.kind === 'ingredient' && ev.uses.length) {
       body += '<h4>Recipes using it</h4><table class="itab"><thead><tr><th>Item</th><th>Qty</th><th>Profit per craft</th><th></th></tr></thead><tbody>'
@@ -146,12 +165,23 @@ export function initItems(env) {
     $('items-count').textContent = Object.keys(items).length + ' items · ' + Object.keys(ingredients).length + ' ingredients';
     $('items-stale').hidden = !stale;
     $('items-stale').textContent = stale ? '⚠ ' + stale + ' price' + (stale > 1 ? 's' : '') + ' missing or older than ' + STALE_DAYS + ' days. Time to refresh.' : '';
-    rows = rows.filter((r) => (kind === 'all' || r.rec.kind === kind) && (st === 'all' || r.ev.status === st) && (!q || env.normName(r.rec.name).includes(q)));
+    const catOk = (r) => kind === 'all' || (kind === 'item' || kind === 'ingredient' ? r.rec.kind === kind : kind === 'craft' ? r.rec.kind === 'item' : kind === 'recycle' ? (r.rec.pepites > 0) : kind === 'brisage' ? (r.rec.concassed > 0) : true);
+    rows = rows.filter((r) => catOk(r) && (st === 'all' || r.ev.status === st) && (!q || env.normName(r.rec.name).includes(q)));
     rows.sort((a, b) => sort === 'name' ? a.rec.name.localeCompare(b.rec.name) : sort === 'old' ? (a.rec.priceAt || 0) - (b.rec.priceAt || 0)
       : (ORDER[a.ev.status] - ORDER[b.ev.status]) || ((b.ev.craft ?? -Infinity) - (a.ev.craft ?? -Infinity)) || a.rec.name.localeCompare(b.rec.name));
-    root.innerHTML = rows.length ? rows.map((r) => rowHtml(r.rec, r.ev)).join('') : '<p class="mu">Nothing here yet. Type an item name above and press Enter: its ingredients are added for you.</p>';
+    const total = rows.length; rows = rows.slice(0, shown);
+    root.innerHTML = rows.length ? rows.map((r) => rowHtml(r.rec, r.ev)).join('') + (total > rows.length ? '<button class="btn f-more" type="button">Show more (' + (total - rows.length) + ' left)</button>' : '') : '<p class="mu">Nothing here yet. Type an item name above and press Enter: its ingredients are added for you.</p>';
   }
 
+  function toIcon(file) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file), im = new Image();
+      im.onload = () => { const s = 64, c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
+        const m = Math.min(im.width, im.height); g.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, 0, 0, s, s); URL.revokeObjectURL(url); res(c.toDataURL('image/png')); };
+      im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('bad image')); };
+      im.src = url;
+    });
+  }
   async function updateRec(id, fn) {
     const rec = items[id] || ingredients[id]; if (!rec) return;
     await commit(fn(rec)); render();
@@ -165,11 +195,21 @@ export function initItems(env) {
   }
 
   $('items-list').addEventListener('click', (e) => {
+    if (e.target.closest('.f-more')) { shown += 80; render(); return; }
     const card = e.target.closest('.irow'); if (!card) return;
     const id = Number(card.dataset.id), t = e.target;
-    if (t.closest('.f-price,.f-lot,.f-avg,.f-sold,.f-pep,.f-conc,.f-ing,.f-note,.f-paste')) return;
+    if (t.closest('.f-price,.f-lot,.f-avg,.f-sold,.f-pep,.f-conc,.f-ing,.f-note,.f-paste,.f-qty,.f-radd,.f-raddq,.f-img')) return;
     if (t.closest('.f-del')) { const rec = items[id] || ingredients[id]; if (rec && confirm('Remove ' + rec.name + ' from your list?')) { delete items[id]; delete ingredients[id]; open.delete(id); remove('Items', id); remove('Ingredients', id); render(); } return; }
     if (t.closest('.f-track')) { const tid = Number(t.closest('.f-track').dataset.track); const P = env.getP(); if (P && P.byId[tid]) { const rec = newEntry(P.byId[tid], Date.now()); commit(rec).then(() => ensureIngredients(rec)).then(render); } return; }
+    if (t.closest('.f-imgdel')) { updateRec(id, (r) => { const n = { ...r }; delete n.icon; delete n.iconSrc; return n; }); return; }
+    if (t.closest('.f-rdel')) { const i = Number(t.closest('tr').dataset.i); updateRec(id, (r) => { const cur = (ctx().byId[id] || [])[4] || []; return { ...r, recipe: cur.filter((_, k) => k !== i) }; }); return; }
+    if (t.closest('.f-rreset')) { updateRec(id, (r) => { const n = { ...r }; delete n.recipe; return n; }); return; }
+    if (t.closest('.f-raddb')) {
+      const P = env.getP(), hit = P && env.pickItem(P, card.querySelector('.f-radd').value), q = Math.max(1, Math.round(Number(card.querySelector('.f-raddq').value) || 1));
+      if (!hit) { status('Type the exact name of an ingredient that exists in the game data.'); return; }
+      updateRec(id, (r) => { const cur = (ctx().byId[id] || [])[4] || []; return { ...r, recipe: cur.filter((g) => g[0] !== hit[0]).concat([[hit[0], q]]) }; }).then(() => ensureIngredients({ id }));
+      return;
+    }
     if (t.closest('.f-readlots')) { const lots = parseLots(card.querySelector('.f-paste').value); if (!Object.keys(lots).length) { status('No lot lines recognised.'); return; } updateRec(id, (r) => applyLots(r, { ...r.lots, ...lots })); status('Lots read.'); return; }
     if (t.closest('.f-ocr')) { card.querySelector('.f-paste').value = env.getOcrText(); return; }
     if (t.closest('.f-bri')) { env.openBrisage((items[id] || ingredients[id]).name); return; }
@@ -190,6 +230,8 @@ export function initItems(env) {
     else if (t.matches('.f-sold')) updateRec(id, (r) => ({ ...r, sold: v }));
     else if (t.matches('.f-pep')) updateRec(id, (r) => ({ ...r, pepites: v }));
     else if (t.matches('.f-conc')) updateRec(id, (r) => ({ ...r, concassed: v }));
+    else if (t.matches('.f-qty')) { const i = Number(t.closest('tr').dataset.i), q = Math.max(1, Math.round(v || 1)); updateRec(id, (r) => { const cur = ((ctx().byId[id] || [])[4] || []).map((g) => g.slice()); if (cur[i]) cur[i][1] = q; return { ...r, recipe: cur }; }); }
+    else if (t.matches('.f-img')) { const f = t.files && t.files[0]; if (f) toIcon(f).then((d) => updateRec(id, (r) => ({ ...r, icon: d, iconSrc: 'upload' }))).catch(() => status('That file could not be read as an image.')); }
     else if (t.matches('.f-note')) updateRec(id, (r) => ({ ...r, note: t.value }));
     else if (t.matches('.f-ing')) { const ing = card.querySelector('tr[data-ing="' + t.closest('tr').dataset.ing + '"]'); const iid = Number(ing.dataset.ing); const rec = ingredients[iid] || items[iid]; if (rec) updateRec(iid, (r) => setPrice(r, v, Date.now())); }
   });
@@ -197,8 +239,8 @@ export function initItems(env) {
   $('items-add').addEventListener('input', () => env.fillList('items-add', 'items-dl'));
   $('items-add').addEventListener('keydown', (e) => { if (e.key === 'Enter') { add($('items-add').value); $('items-add').value = ''; } });
   $('items-add-btn').addEventListener('click', () => { add($('items-add').value); $('items-add').value = ''; });
-  ['items-kind', 'items-filter', 'items-sort'].forEach((id) => $(id).addEventListener('change', render));
-  $('items-search').addEventListener('input', render);
+  ['items-kind', 'items-filter', 'items-sort'].forEach((id) => $(id).addEventListener('change', () => { shown = 80; render(); }));
+  let searchT = null; $('items-search').addEventListener('input', () => { clearTimeout(searchT); searchT = setTimeout(() => { shown = 80; render(); }, 150); });
   $('items-band').value = String(Math.round(band * 100)); $('items-easy').value = String(easyFrom);
   $('items-band').addEventListener('change', () => { const v = Number($('items-band').value); if (v >= 0 && v < 100) { band = v / 100; put('kl-band', String(v)); render(); } });
   $('items-easy').addEventListener('change', () => { const v = Number($('items-easy').value); if (v > 0) { easyFrom = v; put('kl-easy', String(v)); render(); } });
@@ -243,8 +285,10 @@ export function initItems(env) {
   // rows: [{ a, score, rawName, level, type, price, icon }] from the market list
   async function applyMarket(rows) {
     const res = { created: 0, updated: 0, review: 0, skipped: 0 };
-    for (const r of rows) {
+    for (let r of rows) {
       if (!Number.isFinite(r.price) || r.price <= 0) { res.skipped++; continue; }
+      r = Object.assign({}, r, { rawName: cleanName(r.rawName) });
+      if (!r.a && !r.rawName) { res.skipped++; continue; }
       const known = r.a && (items[r.a[0]] || ingredients[r.a[0]]);
       const jump = known && known.price ? r.price / known.price : 1;
       const why = !r.a ? 'name not in the game data'
