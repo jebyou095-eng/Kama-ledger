@@ -245,7 +245,16 @@ export function initItems(env) {
   $('items-band').addEventListener('change', () => { const v = Number($('items-band').value); if (v >= 0 && v < 100) { band = v / 100; put('kl-band', String(v)); render(); } });
   $('items-easy').addEventListener('change', () => { const v = Number($('items-easy').value); if (v > 0) { easyFrom = v; put('kl-easy', String(v)); render(); } });
   const download = (name, data) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); a.download = name; a.click(); };
-  $('items-export').addEventListener('click', () => { download('Items.json', Object.values(items)); setTimeout(() => download('Ingredients.json', Object.values(ingredients)), 250); });
+  $('items-export').addEventListener('click', () => {
+    const P = env.getP(), c = ctx(), it = Object.values(items), ing = Object.values(ingredients);
+    const files = {
+      'Items.json': it, 'Ingredients.json': ing,
+      'Crafts.json': it.map((r) => ({ id: r.id, name: r.name, level: r.level, price: r.price, recipe: ((c.byId[r.id] || [])[4] || []).map((g) => ({ id: g[0], name: P && P.byId[g[0]] ? P.byId[g[0]][1] : '#' + g[0], qty: g[1], price: (ingredients[g[0]] || items[g[0]] || {}).price || null })), edited: !!r.recipe })),
+      'Recycles.json': Object.values({ ...items, ...ingredients }).filter((r) => r.pepites > 0).map((r) => ({ id: r.id, name: r.name, pepites: r.pepites, price: r.price })),
+      'Brisage.json': Object.values({ ...items, ...ingredients }).filter((r) => r.concassed > 0).map((r) => ({ id: r.id, name: r.name, concassed: r.concassed, price: r.price })),
+    };
+    Object.keys(files).forEach((n, i) => setTimeout(() => download(n, files[n]), i * 250));
+  });
   $('items-import').addEventListener('change', async (e) => {
     let n = 0;
     for (const f of e.target.files) {
