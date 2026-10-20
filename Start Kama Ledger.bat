@@ -22,6 +22,22 @@ if not exist "node_modules\electron\dist\electron.exe" (
   pause
   exit /b 1
 )
-call npm run build >nul 2>&1
-if errorlevel 1 ( echo Build failed, run "npm run build" to see why. & pause & exit /b 1 )
+call npm run build > build-log.txt 2>&1
+if errorlevel 1 (
+  echo The build failed. Repairing the installation once, needs internet, takes a few minutes...
+  if exist node_modules rmdir /s /q node_modules
+  call npm install
+  call node node_modules\electron\install.js
+  call npm run build > build-log.txt 2>&1
+)
+if errorlevel 1 (
+  echo.
+  echo Build failed again. The reason is saved in build-log.txt in this folder. Last lines:
+  echo ----------------------------------------
+  powershell -NoProfile -Command "Get-Content build-log.txt -Tail 15"
+  echo ----------------------------------------
+  echo Send me a photo of this window or the build-log.txt file.
+  pause
+  exit /b 1
+)
 start "" "node_modules\electron\dist\electron.exe" .
