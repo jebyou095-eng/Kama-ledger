@@ -1312,7 +1312,13 @@ window.show = show;
 /* ---- game data update (current recipes, levels, new items, icons) ---- */
 var GD = 'https://api.dofusdu.de/dofus3/v1/fr/items/';
 async function gdJson(path) {
-  var r = await window.kamaDesktopCapture.gameJson(GD + path);
+  var r;
+  for (var tries = 0; tries < 4; tries++) {
+    r = await window.kamaDesktopCapture.gameJson(GD + path);
+    if (r && r.ok) break;
+    if (r && r.status && r.status !== 429 && r.status < 500) break;
+    await new Promise(function (res) { setTimeout(res, 600 * (tries + 1) * (tries + 1)); });
+  }
   if (!r || !r.ok) { var e = new Error(r && r.status ? 'HTTP ' + r.status : (r && r.error) || 'no answer'); e.status = r && r.status; throw e; }
   return r.json;
 }
@@ -1321,30 +1327,34 @@ $('gd-update').addEventListener('click', async function () {
   if (!b || !b.gameJson) { st.textContent = 'This works in the desktop app only (it needs internet access once).'; return; }
   if (!P) { st.textContent = 'Load the game data first.'; return; }
   this.disabled = true;
-  var all = [], notes = [];
+  var all = [], notes = [], failed = [];
   try {
     for (var s = 0; s < SUBTYPES.length; s++) {
       var sub = SUBTYPES[s], first;
-      try { first = await gdJson(sub + '?page[size]=100&page[number]=1'); } catch (e) { if (e.status === 404) continue; throw e; }
-      var got = pageItems(first).slice(), pages = lastPage(first), n = 2, done = false;
+      try { first = await gdJson(sub + '?fields[item]=recipe&page[size]=100&page[number]=1'); } catch (e) { notes.push(sub + ': ' + (e.status === 404 ? 'not offered' : 'FAILED (' + e.message + ')')); if (e.status !== 404) failed.push(sub); continue; }
+      var got = pageItems(first).slice(), pages = lastPage(first), n = 2, done = false, err = null;
       // Page count comes from the "last" link; if it is missing, keep going until a page comes back short.
       while (!done && n <= Math.max(pages, 400)) {
         var batch = [];
         for (var q = 0; q < 4 && n <= Math.max(pages, 400); q++) batch.push(n++);
         st.textContent = 'Downloading ' + sub + ' (page ' + batch[0] + (pages > 1 ? '/' + pages : '') + ')...';
         var outs = await Promise.all(batch.map(async function (pg) {
-          for (var t = 0; t < 3; t++) { try { return pageItems(await gdJson(sub + '?page[size]=100&page[number]=' + pg)); } catch (e) { if (e.status === 404 || e.status === 400) return []; if (t === 2) throw e; } }
+          try { return pageItems(await gdJson(sub + '?fields[item]=recipe&page[size]=100&page[number]=' + pg)); } catch (e) { if (e.status === 404 || e.status === 400) return []; err = e; return null; }
         }));
+        if (outs.some(function (o) { return o === null; })) { failed.push(sub); notes.push(sub + ': stopped early (' + err.message + ')'); break; }
         outs.forEach(function (o) { got = got.concat(o); if (o.length < 100) done = true; });
         if (pages > 1 && n > pages) done = true;
       }
       all = all.concat(got); notes.push(sub + ' ' + got.length);
     }
+    if (failed.length) throw new Error(failed.join(', ') + ' could not be downloaded completely (' + notes.join('; ') + '). Nothing was changed, try again in a minute');
     if (all.length < 1000) throw new Error('only ' + all.length + ' items came back, so nothing was changed');
+    var withRecipe = all.filter(function (x) { return x && x.recipe && x.recipe.length; }).length;
+    if (withRecipe < 100) throw new Error('the service sent items without recipes (' + withRecipe + '), so nothing was changed');
     var meta = null; try { meta = (await window.kamaDesktopCapture.gameJson('https://api.dofusdu.de/dofus3/v1/meta/version')).json; } catch (e) {}
     var res = mergeIndex(P.idx, all, new Date().toISOString().slice(0, 10));
     metaPut('index', res.idx); setIdx(res.idx);
-    st.textContent = 'Updated' + (meta && meta.version ? ' to game version ' + meta.version : '') + ': ' + res.stats.added + ' new items, ' + res.stats.recipeFixed + ' recipes changed. Loading images...';
+    st.textContent = 'Updated' + (meta && meta.version ? ' to game version ' + meta.version : '') + ': ' + res.stats.added + ' new items, ' + res.stats.recipeFixed + ' recipes changed (' + notes.join(', ') + '). Loading images...';
     await itemsUi.fillIcons();
     st.textContent = st.textContent.replace('Loading images...', 'Images loaded.');
   } catch (e) { st.textContent = 'Update failed (nothing was changed): ' + e.message; }
