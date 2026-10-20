@@ -59,3 +59,14 @@ const assert = require('node:assert/strict');
   assert.equal(cleanName("Heaume Clochecuivre ®"), 'Heaume Clochecuivre');
   console.log('name clean-up checks passed');
 })();
+(async () => {
+  const { snapItem, fold } = await import('../src/market.js');
+  const assert = require('node:assert/strict');
+  const P = { idx: { types: {}, items: [[1, "Coiffe d'Aermyne", 198, 1, 0, []], [2, "Coiffe d'Oshimo", 198, 1, 0, []], [3, 'Padgref', 120, 1, 0, []], [4, 'Podgrof', 120, 1, 0, []], [5, 'Heaume Clochecuivre', 198, 1, 0, []]] }, byN: {} };
+  assert.equal(snapItem(P, "Coiffe d'Aerruyne", 198, '').item[0], 1, 'rn/m confusion resolved by level');
+  assert.equal(snapItem(P, 'Heaume Clochacuivre', 198, '').item[0], 5, 'one wrong vowel resolved');
+  assert.equal(snapItem(P, 'Padgref', 120, '').item[0], 3, 'exact stays exact even with a lookalike');
+  assert.ok(snapItem(P, 'Podgref', 120, '').ambiguous, 'two real lookalikes stay ambiguous');
+  assert.equal(snapItem(P, 'xqzt vvk', 198, ''), null, 'gibberish matches nothing');
+  console.log('lookalike matching checks passed');
+})();

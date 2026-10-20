@@ -88,6 +88,13 @@ export function splitNameType(lines, typeNames) {
 }
 
 // Match an OCR name to the game data. The level is a strong filter: only items of that level compete.
+// What OCR typically gets wrong, folded away so "Aerruyne" and "Aermyne" (rn/m) compare equal.
+export function fold(s, loose) {
+  let t = norm(s).replace(/rru|rn/g, 'm').replace(/vv/g, 'w').replace(/cl/g, 'd').replace(/[1|]/g, 'l').replace(/0/g, 'o').replace(/5/g, 's').replace(/\s+/g, '');
+  if (loose) t = t.replace(/[aeo]/g, 'a').replace(/[il]/g, 'l').replace(/[uv]/g, 'u').replace(/[cd]/g, 'c');
+  return t;
+}
+
 export function snapItem(P, rawName, level, rawType) {
   if (!P || !rawName) return null;
   const key = norm(rawName);
@@ -95,6 +102,18 @@ export function snapItem(P, rawName, level, rawType) {
   if (!P.byLevel) {
     P.byLevel = {};
     P.idx.items.forEach((a) => { (P.byLevel[a[2]] || (P.byLevel[a[2]] = [])).push(a); });
+  }
+  // Same level + same name once OCR confusions are folded away: if exactly one item fits, that is it.
+  if (Number.isFinite(level) && P.byLevel[level]) {
+    const k1 = fold(rawName), k2 = fold(rawName, true);
+    let same = P.byLevel[level].filter((a) => fold(a[1]) === k1);
+    if (!same.length) same = P.byLevel[level].filter((a) => fold(a[1], true) === k2);
+    if (same.length === 1) return { item: same[0], score: 0.99, sim: 0.99, exact: true, folded: true };
+    if (same.length > 1) {
+      const ranked = same.map((a) => ({ a, s: similarity(rawName, a[1]) })).sort((x, y) => y.s - x.s);
+      if (ranked[0].s - ranked[1].s >= 0.1) return { item: ranked[0].a, score: 0.99, sim: 0.99, exact: true, folded: true };
+      return { item: ranked[0].a, score: ranked[0].s, sim: ranked[0].s, exact: false, ambiguous: true };
+    }
   }
   const typeKey = norm(rawType);
   const score = (a) => {

@@ -1483,7 +1483,7 @@ async function scanFrame(frame) {
         var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
         window.klLastScan = { market: m.rows };
         var res = await itemsUi.applyMarket(rows);
-        out.push('Market ' + rows.length + ' rows: ' + res.created + ' new, ' + res.updated + ' updated' + (res.review ? ', ' + res.review + ' to review' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
+        out.push('Market ' + rows.length + ' rows: ' + res.created + ' new, ' + res.updated + ' updated' + (res.review ? ', ' + res.review + ' to review' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
       } else if (k === 'popup') {
         var pl = await scan.readText(frame, prof.popup, 'white');
         var pop = parsePopup(pl), lots = parseLots(pl.join('\n'));

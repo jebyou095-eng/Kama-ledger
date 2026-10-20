@@ -314,7 +314,7 @@ export function initItems(env) {
     for (let r of rows) {
       if (!Number.isFinite(r.price) || r.price <= 0) { res.skipped++; continue; }
       r = Object.assign({}, r, { rawName: cleanName(r.rawName) });
-      if (!r.a && !r.rawName) { res.skipped++; continue; }
+      if (!r.a) { res.ignored = (res.ignored || 0) + 1; continue; }   // not an item of the game data: unreadable or gibberish, never stored
       const known = r.a && (items[r.a[0]] || ingredients[r.a[0]]);
       const jump = known && known.price ? r.price / known.price : 1;
       const why = !r.a ? 'name not in the game data'
