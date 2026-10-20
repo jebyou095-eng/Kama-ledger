@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { initItems } from './items-ui.js';
 import { parseLots } from './items.js';
 import { parseBudget, parseMarketChart, parsePopup, snapItem } from './market.js';
+import { mergeIndex, SUBTYPES, pageItems, lastPage } from './gamedata.js';
 import * as scan from './scan.js';
 import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
@@ -1284,6 +1285,8 @@ itemsUi = initItems({
   getDB: function () { return DB; }, getP: function () { return P; }, metaGet: metaGet, metaPut: metaPut,
   netP: netP, taxMode: function () { return $('rnd').value; },
   fillList: fillList,
+  iconUrl: function (id) { var g = P && P.idx.icons && P.idx.icons[id]; return g ? 'https://api.dofusdu.de/dofus3/v1/img/item/' + g + '-64.png' : null; },
+  fetchImage: async function (url) { var b = window.kamaDesktopCapture; if (!b || !b.gameImage) return null; var r = await b.gameImage(url); return r && r.ok ? r.dataUrl : null; },
   getOcrText: function () { return $('ocrtext').value; },
   getBrisageValue: function () { return lastBriValue; },
   openBrisage: function (name) { $('bi').value = name; fillBrisage(); show('bri'); }
@@ -1306,6 +1309,46 @@ show(st);
 window.$ = $;
 window.show = show;
 
+/* ---- game data update (current recipes, levels, new items, icons) ---- */
+var GD = 'https://api.dofusdu.de/dofus3/v1/fr/items/';
+async function gdJson(path) {
+  var r = await window.kamaDesktopCapture.gameJson(GD + path);
+  if (!r || !r.ok) { var e = new Error(r && r.status ? 'HTTP ' + r.status : (r && r.error) || 'no answer'); e.status = r && r.status; throw e; }
+  return r.json;
+}
+$('gd-update').addEventListener('click', async function () {
+  var b = window.kamaDesktopCapture, st = $('gd-status');
+  if (!b || !b.gameJson) { st.textContent = 'This works in the desktop app only (it needs internet access once).'; return; }
+  if (!P) { st.textContent = 'Load the game data first.'; return; }
+  this.disabled = true;
+  var all = [], notes = [];
+  try {
+    for (var s = 0; s < SUBTYPES.length; s++) {
+      var sub = SUBTYPES[s], first;
+      try { first = await gdJson(sub + '?page[size]=100&page[number]=1'); } catch (e) { if (e.status === 404) continue; throw e; }
+      var pages = lastPage(first), got = pageItems(first).slice();
+      var n = 2;
+      await Promise.all([0, 1, 2, 3].map(async function () {
+        while (n <= pages) {
+          var pg = n++;
+          st.textContent = 'Downloading ' + sub + ' (page ' + pg + '/' + pages + ')...';
+          var j = null;
+          for (var t = 0; t < 3 && !j; t++) { try { j = await gdJson(sub + '?page[size]=100&page[number]=' + pg); } catch (e) { if (t === 2) throw e; } }
+          got = got.concat(pageItems(j));
+        }
+      }));
+      all = all.concat(got); notes.push(sub + ' ' + got.length);
+    }
+    if (all.length < 1000) throw new Error('only ' + all.length + ' items came back, so nothing was changed');
+    var meta = null; try { meta = (await window.kamaDesktopCapture.gameJson('https://api.dofusdu.de/dofus3/v1/meta/version')).json; } catch (e) {}
+    var res = mergeIndex(P.idx, all, new Date().toISOString().slice(0, 10));
+    metaPut('index', res.idx); setIdx(res.idx);
+    st.textContent = 'Updated' + (meta && meta.version ? ' to game version ' + meta.version : '') + ': ' + res.stats.added + ' new items, ' + res.stats.recipeFixed + ' recipes changed. Loading images...';
+    await itemsUi.fillIcons();
+    st.textContent = st.textContent.replace('Loading images...', 'Images loaded.');
+  } catch (e) { st.textContent = 'Update failed (nothing was changed): ' + e.message; }
+  this.disabled = false;
+});
 /* ---- scan profile: named regions drawn once, then one key press reads them all ---- */
 var PROFILE_TYPES = [
   ['market', 'Market list (rows: image, name, level, average price)'],

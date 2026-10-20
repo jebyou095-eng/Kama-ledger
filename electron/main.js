@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, session } from 'electron';
+import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, session } from 'electron';
 import { execFile } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -63,6 +63,23 @@ function syncHotkey() {
     if (globalShortcut.register(desiredHotkey, fireHotkey)) registeredHotkey = desiredHotkey;
   } catch (error) { /* an invalid accelerator was already rejected in hotkey:set */ }
 }
+
+// Game data comes from one fixed host only; the renderer cannot ask the app to fetch anything else.
+const DATA_HOST = 'api.dofusdu.de';
+const dataUrlOk = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && x.hostname === DATA_HOST; } catch (e) { return false; } };
+const FAKE = process.env.KAMA_FAKE_GAMEDATA ? JSON.parse(process.env.KAMA_FAKE_GAMEDATA) : null; // used by automated tests only
+ipcMain.handle('gamedata:json', async (_e, url) => {
+  if (!dataUrlOk(url)) return { ok: false, error: 'blocked url' };
+  if (FAKE) return /meta\/version/.test(url) ? { ok: true, json: { version: 'test' } } : (/items\/equipment/.test(url) ? { ok: true, json: FAKE } : { ok: false, status: 404 });
+  try { const r = await net.fetch(url); if (!r.ok) return { ok: false, status: r.status }; return { ok: true, json: await r.json() }; }
+  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+ipcMain.handle('gamedata:image', async (_e, url) => {
+  if (!dataUrlOk(url)) return { ok: false, error: 'blocked url' };
+  if (FAKE) return { ok: true, dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' };
+  try { const r = await net.fetch(url); if (!r.ok) return { ok: false, status: r.status }; const b = Buffer.from(await r.arrayBuffer()); return { ok: true, dataUrl: 'data:image/png;base64,' + b.toString('base64') }; }
+  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
 
 ipcMain.handle('hotkey:set', (_event, accelerator) => {
   if (!validHotkey(accelerator)) return { ok: false, reason: 'Use a function key (F1-F24) or a combination with Ctrl, Alt or Shift.' };

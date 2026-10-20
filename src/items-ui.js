@@ -28,6 +28,7 @@ export function initItems(env) {
   const colOf = (rec) => (rec.kind === 'item' ? 'Items' : 'Ingredients');
   const mapOf = (rec) => (rec.kind === 'item' ? items : ingredients);
   const commit = (rec) => { mapOf(rec)[rec.id] = rec; return save(colOf(rec), rec); };
+  const wantIcon = (rec) => { setTimeout(() => gameIcon(rec).catch(() => {}), 0); return rec; };
 
   async function load() {
     (await all('Items')).forEach((r) => { items[r.id] = r; });
@@ -63,7 +64,7 @@ export function initItems(env) {
       if (ingredients[g[0]] || items[g[0]]) return;
       const it = P.byId[g[0]]; if (!it) return;
       const entry = { ...newEntry(it, Date.now()), kind: 'ingredient' };
-      made.push(commit(entry));
+      made.push(commit(entry).then(() => wantIcon(entry)));
     });
     return Promise.all(made);
   }
@@ -84,7 +85,7 @@ export function initItems(env) {
     }
     if (items[hit[0]] || ingredients[hit[0]]) { open.add(hit[0]); status(hit[1] + ' is already in your list.'); render(); return; }
     const rec = newEntry(hit, Date.now());
-    await commit(rec); await ensureIngredients(rec);
+    await commit(rec); wantIcon(rec); await ensureIngredients(rec);
     open.add(rec.id); status('Added ' + hit[1] + (hit[4] ? ' with its ' + hit[4].length + ' ingredients.' : '.'));
     render();
   }
@@ -182,6 +183,22 @@ export function initItems(env) {
       im.src = url;
     });
   }
+  // Official icon from the game data (64px). Replaces a screenshot crop, never an image you uploaded.
+  const iconBusy = new Set();
+  async function gameIcon(rec) {
+    if (!rec || rec.iconSrc === 'upload' || rec.iconSrc === 'game' || iconBusy.has(rec.id) || !env.iconUrl) return;
+    const url = env.iconUrl(rec.id); if (!url) return;
+    iconBusy.add(rec.id);
+    try {
+      const d = await env.fetchImage(url);
+      if (d) { const cur = items[rec.id] || ingredients[rec.id]; if (cur && cur.iconSrc !== 'upload') { await commit({ ...cur, icon: d, iconSrc: 'game' }); render(); } }
+    } finally { iconBusy.delete(rec.id); }
+  }
+  async function fillIcons() {
+    const todo = Object.values(items).concat(Object.values(ingredients)).filter((r) => r.iconSrc !== 'upload' && r.iconSrc !== 'game' && !r.custom);
+    let i = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => { while (i < todo.length) await gameIcon(todo[i++]); }));
+  }
   async function updateRec(id, fn) {
     const rec = items[id] || ingredients[id]; if (!rec) return;
     await commit(fn(rec)); render();
@@ -274,7 +291,7 @@ export function initItems(env) {
     const rec = a ? newEntry(a, nowTs())
       : { ...newEntry([-nowTs() - Math.floor(Math.random() * 1000), String(name).trim(), level || null, 0, 0, []], nowTs()), custom: true, kind: 'ingredient', note: 'Not in the game data (newer than Datafus). Prices only, no recipe.' };
     if (icon) rec.icon = icon;
-    await commit(rec);
+    await commit(rec); wantIcon(rec);
     if (a) await ensureIngredients(rec);
     return { rec, created: true };
   }
@@ -400,5 +417,5 @@ export function initItems(env) {
     renderReview(); renderBudget(); renderScanLog();
   }
 
-  return { load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
+  return { fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }

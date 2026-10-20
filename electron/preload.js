@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('kamaDesktopCapture', {
   sendClick: (point) => ipcRenderer.invoke('interaction:click', point),
   sendKey: (key) => ipcRenderer.invoke('interaction:key', key),
   setSharing: (sharing) => ipcRenderer.invoke('capture:set-sharing', sharing),
+  gameJson: (url) => ipcRenderer.invoke('gamedata:json', url),
+  gameImage: (url) => ipcRenderer.invoke('gamedata:image', url),
   setHotkey: (accelerator) => ipcRenderer.invoke('hotkey:set', accelerator),
   onHotkey: (callback) => {
     ipcRenderer.removeAllListeners('capture:hotkey');

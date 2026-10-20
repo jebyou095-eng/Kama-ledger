@@ -190,6 +190,7 @@
       <section id="t-data">
         <p class="mu">Load your Datafus data once: the .zip, the Datafus-master folder, or several of its files. It is read here in the browser (nothing is uploaded), only names, levels, types, recipes and stats are kept, and the result stays saved in this browser. Datafus stops at Dofus 2 (December 2024), so newer items or changed recipes can be missing: check anything surprising in the game.</p>
         <div class="row"><label class="btn">Choose zip / files<input id="dfile" type="file" multiple accept=".zip,.json" hidden></label><label class="btn">Choose a folder<input id="dfold" type="file" webkitdirectory hidden></label><button class="btn" onclick="dataExport()">Export compact file</button><button class="btn" onclick="dataClear()">Reload the game data shipped with the app</button><button class="btn stop-button" onclick="resetEverything()">Erase ALL app data (fresh start)</button></div>
+        <div class="row"><button class="btn primary-button" id="gd-update" type="button">Update game data (current recipes, levels, new items, images)</button><span id="gd-status" class="mu" aria-live="polite"></span></div>
         <p id="dstat" class="mu">No data loaded.</p>
         <div class="row"><label>Search an item<input id="dq" autocomplete="off"></label></div>
         <div id="dres"></div>
