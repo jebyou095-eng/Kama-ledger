@@ -308,32 +308,48 @@ export function initItems(env) {
   async function persistReview() { await env.metaPut('scan-review', review); }
   async function persistLog() { await env.metaPut('scan-log', scanLog.slice(0, 30)); }
 
+  // Scans never write prices directly: they are staged here, you approve them (or let confident ones through).
+  let sel = new Set(), pfilter = 'all', autoAccept = false;
+  try { autoAccept = localStorage.getItem('kl-autoaccept') === '1'; } catch (e) {}
+  const stage = (e) => {
+    review = review.filter((x) => !(x.kind === e.kind && x.itemId === e.itemId));
+    review.unshift({ ...e, id: nowTs() + Math.random(), at: nowTs() });
+    if (!e.why) sel.add(review[0].id);
+  };
+  async function acceptEntry(e) {
+    const P = env.getP(), a = P && P.byId[e.itemId]; if (!a) return false;
+    if (e.kind === 'popup') { await applyPopup({ a, name: a[1], level: a[2], avg: e.avg, lots: e.lots }); return true; }
+    const { rec } = await ensureRec(a);     // existing tracked item: its price is updated, nothing new is created
+    await applyPrice(rec, e.price, e.icon);
+    return true;
+  }
   // rows: [{ a, score, rawName, level, type, price, icon }] from the market list
   async function applyMarket(rows) {
-    const res = { created: 0, updated: 0, review: 0, skipped: 0 };
+    const res = { staged: 0, auto: 0, review: 0, skipped: 0, ignored: 0 };
     for (let r of rows) {
       if (!Number.isFinite(r.price) || r.price <= 0) { res.skipped++; continue; }
       r = Object.assign({}, r, { rawName: cleanName(r.rawName) });
-      if (!r.a) { res.ignored = (res.ignored || 0) + 1; continue; }   // not an item of the game data: unreadable or gibberish, never stored
-      const known = r.a && (items[r.a[0]] || ingredients[r.a[0]]);
+      if (!r.a) { res.ignored++; continue; }   // not an item of the game data: unreadable or gibberish, never stored
+      const known = items[r.a[0]] || ingredients[r.a[0]];
       const jump = known && known.price ? r.price / known.price : 1;
-      const why = !r.a ? 'name not in the game data'
-        : matchVerdict(r.sim, r.nameConf)
+      const why = matchVerdict(r.sim, r.nameConf)
         || (r.priceSure === false ? 'price read differently on each pass' : '')
         || ((jump > 5 || jump < 0.2) ? 'price changed more than 5x' : '');
-      if (!why) {
-        const { rec, created } = await ensureRec(r.a);
-        await applyPrice(rec, r.price, r.icon);
-        created ? res.created++ : res.updated++;
-      } else {
-        review = review.filter((x) => !(x.rawName === r.rawName && x.level === r.level));
-        review.unshift({ id: nowTs() + Math.random(), rawName: r.rawName, level: r.level, type: r.type, price: r.price, icon: r.icon, suggestion: r.a ? [r.a[0], r.a[1]] : null, why: why, at: nowTs() });
-        res.review++;
-      }
+      const e = { kind: 'market', itemId: r.a[0], rawName: r.rawName, level: r.level, type: r.type, price: r.price, icon: r.icon, why, old: known && known.price || null };
+      if (!why && autoAccept) { await acceptEntry(e); res.auto++; continue; }
+      stage(e); res.staged++; if (why) res.review++;
     }
-    review = review.slice(0, 60);
+    review = review.slice(0, 200);
     await persistReview(); render(); renderReview();
     return res;
+  }
+  async function stagePopup(p) {
+    if (!p.a) return { ignored: true };
+    const known = items[p.a[0]] || ingredients[p.a[0]];
+    const e = { kind: 'popup', itemId: p.a[0], rawName: p.name, level: p.level, avg: p.avg, lots: p.lots || {}, price: priceFromLots(p.lots || {}) || p.avg || null, why: '', old: known && known.price || null, icon: null };
+    if (autoAccept) { await acceptEntry(e); return { name: p.a[1], auto: true, lots: Object.keys(e.lots).length }; }
+    stage(e); await persistReview(); renderReview();
+    return { name: p.a[1], staged: true, lots: Object.keys(e.lots).length };
   }
 
   async function applyPopup(p) {
@@ -385,37 +401,67 @@ export function initItems(env) {
 
   function renderReview() {
     const el = $('items-review'); if (!el) return;
+    const P = env.getP();
+    const list = review.filter((r) => pfilter === 'all' || (pfilter === 'ok' ? !r.why : !!r.why));
     el.hidden = !review.length;
-    el.innerHTML = review.length ? '<h4>Needs review (' + review.length + ')</h4>' + review.map((r) => '<div class="rv" data-rv="' + r.id + '">'
-      + (r.icon ? '<img class="icon" alt="" src="' + r.icon + '">' : '<span class="icon">?</span>')
-      + '<input class="rv-name" value="' + esc(r.rawName) + '" aria-label="Item name"><span class="mu">lvl ' + (r.level ?? '?') + ' · ' + F(r.price) + '</span>'
-      + (r.suggestion ? '<button class="btn rv-sugg" type="button">Use “' + esc(r.suggestion[1]) + '”</button>' : '')
-      + '<button class="btn rv-add" type="button">Add as typed</button><button class="btn rv-drop" type="button">Dismiss</button></div>').join('') : '';
+    if (!review.length) { el.innerHTML = ''; return; }
+    const nSel = review.filter((r) => sel.has(r.id)).length;
+    el.innerHTML = '<div class="pn-head"><h4>Prices waiting for your approval (' + review.length + ')</h4>'
+      + '<label><input type="checkbox" class="pn-all"' + (list.length && list.every((r) => sel.has(r.id)) ? ' checked' : '') + '> Select all shown</label>'
+      + '<select class="pn-filter"><option value="all"' + (pfilter === 'all' ? ' selected' : '') + '>All</option><option value="ok"' + (pfilter === 'ok' ? ' selected' : '') + '>Matched, nothing odd</option><option value="check"' + (pfilter === 'check' ? ' selected' : '') + '>Needs a look</option></select>'
+      + '<label><input type="checkbox" class="pn-auto"' + (autoAccept ? ' checked' : '') + '> Accept clean matches automatically</label>'
+      + '<button class="btn primary-button pn-accept" type="button"' + (nSel ? '' : ' disabled') + '>Accept selected (' + nSel + ')</button>'
+      + '<button class="btn stop-button pn-refuse" type="button"' + (nSel ? '' : ' disabled') + '>Refuse selected (' + nSel + ')</button></div>'
+      + '<div class="pn-list">' + list.map((r) => {
+        const a = P && P.byId[r.itemId];
+        const diff = r.old && r.price ? Math.round((r.price / r.old - 1) * 100) : null;
+        return '<div class="rv' + (r.why ? ' check' : '') + '" data-rv="' + r.id + '"><input type="checkbox" class="pn-sel"' + (sel.has(r.id) ? ' checked' : '') + ' aria-label="Select">'
+          + (r.icon ? '<img class="icon" alt="" src="' + r.icon + '">' : '<span class="icon">' + esc(initials(a ? a[1] : r.rawName)) + '</span>')
+          + '<span class="pn-nm"><input class="pn-name" id="pn-' + String(r.id).replace('.', '-') + '" list="items-dl" autocomplete="off" value="' + esc(a ? a[1] : '') + '" placeholder="Pick the right item" aria-label="Item">'
+          + '<small>' + (r.kind === 'popup' ? 'Lot popup' : 'Market list') + (r.rawName && a && r.rawName !== a[1] ? ' · read as “' + esc(r.rawName) + '”' : '') + (r.level ? ' · lvl ' + r.level : '') + '</small></span>'
+          + (r.kind === 'popup' ? '<span class="pn-lots">' + Object.keys(r.lots).map((k) => k + ': ' + F(r.lots[k])).join(' · ') + (r.avg ? ' · avg ' + F(r.avg) : '') + '</span>'
+            : '<input class="pn-price" inputmode="numeric" value="' + F(r.price) + '" aria-label="Price">')
+          + '<span class="pn-old">' + (r.old ? 'was ' + F(r.old) + (diff !== null && diff !== 0 ? ' (' + (diff > 0 ? '+' : '') + diff + '%)' : '') : 'new price') + '</span>'
+          + (r.why ? '<span class="pn-why">⚠ ' + esc(r.why) + '</span>' : '<span class="pn-ok">✓ matched</span>')
+          + '</div>';
+      }).join('') + '</div>';
   }
 
+  const pnEntry = (t) => { const row = t.closest('.rv'); return row && review.find((x) => String(x.id) === row.dataset.rv); };
+  $('items-review').addEventListener('change', async (e) => {
+    const t = e.target, P = env.getP();
+    if (t.matches('.pn-all')) { review.filter((r) => pfilter === 'all' || (pfilter === 'ok' ? !r.why : !!r.why)).forEach((r) => (t.checked ? sel.add(r.id) : sel.delete(r.id))); return renderReview(); }
+    if (t.matches('.pn-filter')) { pfilter = t.value; return renderReview(); }
+    if (t.matches('.pn-auto')) { autoAccept = t.checked; try { localStorage.setItem('kl-autoaccept', autoAccept ? '1' : '0'); } catch (x) {} return; }
+    const r = pnEntry(t); if (!r) return;
+    if (t.matches('.pn-sel')) { t.checked ? sel.add(r.id) : sel.delete(r.id); return renderReview(); }
+    if (t.matches('.pn-price')) { const v = numOrNull(t.value); if (v) { r.price = v; await persistReview(); } return renderReview(); }
+    if (t.matches('.pn-name')) {
+      const hit = P && env.pickItem(P, t.value);
+      if (hit) { r.itemId = hit[0]; r.why = ''; const known = items[hit[0]] || ingredients[hit[0]]; r.old = known && known.price || null; sel.add(r.id); await persistReview(); }
+      else status('That name is not in the game data. Pick one from the suggestions.');
+      renderReview();
+    }
+  });
+  $('items-review').addEventListener('input', (e) => { if (e.target.matches('.pn-name')) env.fillList(e.target.id, 'items-dl'); });
   $('items-review').addEventListener('click', async (e) => {
-    const row = e.target.closest('.rv'); if (!row) return;
-    const r = review.find((x) => String(x.id) === row.dataset.rv); if (!r) return;
-    const P = env.getP();
-    const done = async () => { review = review.filter((x) => x !== r); await persistReview(); renderReview(); render(); };
-    if (e.target.closest('.rv-drop')) return done();
-    if (e.target.closest('.rv-sugg') && r.suggestion && P) {
-      const { rec } = await ensureRec(P.byId[r.suggestion[0]]); await applyPrice(rec, r.price, r.icon); return done();
-    }
-    if (e.target.closest('.rv-add')) {
-      const typed = row.querySelector('.rv-name').value.trim(); if (!typed) return;
-      const hit = P ? env.pickItem(P, typed) : null;
-      const { rec } = await ensureRec(hit, typed, r.level, r.icon);
-      await applyPrice(rec, r.price, r.icon); return done();
-    }
+    const accept = e.target.closest('.pn-accept'), refuse = e.target.closest('.pn-refuse');
+    if (!accept && !refuse) return;
+    const chosen = review.filter((r) => sel.has(r.id));
+    if (refuse) { review = review.filter((r) => !sel.has(r.id)); sel.clear(); await persistReview(); renderReview(); status(chosen.length + ' price(s) refused.'); return; }
+    let ok = 0, stuck = 0;
+    for (const r of chosen) { if (await acceptEntry(r)) { ok++; review = review.filter((x) => x !== r); sel.delete(r.id); } else stuck++; }
+    await persistReview(); render(); renderReview();
+    status(ok + ' price(s) registered' + (stuck ? ', ' + stuck + ' still need an item picked' : '') + '.');
   });
 
   async function loadScanState() {
-    review = (await env.metaGet('scan-review')) || [];
+    review = ((await env.metaGet('scan-review')) || []).filter((x) => x.kind || x.suggestion).map((x) => (x.kind ? x : { ...x, kind: 'market', itemId: x.suggestion ? x.suggestion[0] : null }));
+    sel = new Set(review.filter((x) => !x.why).map((x) => x.id));
     budget = (await env.metaGet('budget')) || null;
     scanLog = (await env.metaGet('scan-log')) || [];
     renderReview(); renderBudget(); renderScanLog();
   }
 
-  return { fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
+  return { stagePopup, fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }

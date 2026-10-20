@@ -300,3 +300,9 @@ img.icon { object-fit: cover; }
 .ctree{border-left:0;padding-left:0}.ctree li{padding:.1em 0}.ctree .tn{font-weight:600}
 .tag-edited{font-size:.75em;background:#8a5a00;color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px}
 .f-more{display:block;margin:12px auto}
+
+.pn-head{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:8px}.pn-head h4{margin:0 auto 0 0}
+.pn-list{display:flex;flex-direction:column;gap:6px;max-height:420px;overflow:auto}
+.rv{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.06)}
+.rv.check{outline:1px solid #c98a00}.rv .pn-nm{display:flex;flex-direction:column;min-width:220px;flex:1}.rv .pn-name{width:100%}.pn-price{width:110px;text-align:right}
+.pn-old{font-size:.85em;opacity:.8}.pn-why{color:#c98a00;font-size:.85em}.pn-ok{color:#1fa83a;font-size:.85em}.pn-lots{font-size:.85em}

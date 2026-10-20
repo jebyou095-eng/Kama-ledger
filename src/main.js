@@ -1483,15 +1483,15 @@ async function scanFrame(frame) {
         var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
         window.klLastScan = { market: m.rows };
         var res = await itemsUi.applyMarket(rows);
-        out.push('Market ' + rows.length + ' rows: ' + res.created + ' new, ' + res.updated + ' updated' + (res.review ? ', ' + res.review + ' to review' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
+        out.push('Market ' + rows.length + ' rows: ' + res.staged + ' waiting for approval' + (res.auto ? ', ' + res.auto + ' registered' : '') + (res.review ? ' (' + res.review + ' need a look)' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
       } else if (k === 'popup') {
         var pl = await scan.readText(frame, prof.popup, 'white');
         var pop = parsePopup(pl), lots = parseLots(pl.join('\n'));
         if (pop.name.length < 3 || (!Object.keys(lots).length && !pop.avg)) { out.push('Popup: could not read it'); continue; }
         window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
         var ps = P ? snapItem(P, pop.name, pop.level, pop.type) : null;
-        var pr = await itemsUi.applyPopup({ a: ps && ps.score >= 0.9 ? ps.item : null, name: pop.name, level: pop.level, avg: pop.avg, lots: lots });
-        out.push('Popup ' + pr.name + ': ' + pr.lots + ' lot price(s)' + (pr.created ? ' (new)' : ''));
+        var pr = await itemsUi.stagePopup({ a: ps && ps.score >= 0.9 ? ps.item : null, name: pop.name, level: pop.level, avg: pop.avg, lots: lots });
+        out.push(pr.ignored ? 'Popup: item not recognised, ignored' : 'Popup ' + pr.name + ': ' + pr.lots + ' lot price(s) ' + (pr.auto ? 'registered' : 'waiting for approval'));
       } else if (k === 'chart') {
         var cl = await scan.readText(frame, prof.chart, 'white');
         var ch = parseMarketChart(cl), cn = P ? bestNameInLines(cl, 0.8) : null;
