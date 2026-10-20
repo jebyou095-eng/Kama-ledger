@@ -15,6 +15,7 @@ const assert = require('node:assert/strict');
   assert.equal(idx.items[0][4][0][1], 3, 'input is not modified');
   assert.equal(g.lastPage({ _links: { last: 'https://a/b?page[number]=41&page[size]=100' } }), 41);
   assert.equal(g.lastPage({ _links: { last: 'https://a/b?page%5Bnumber%5D=7' } }), 7);
+  assert.equal(g.lastPage({ _links: { last: 'https://api.dofusdu.de/dofus3/v1/fr/items/equipment?page%5Bnumber%5D%3D41%26page%5Bsize%5D%3D100' } }), 41, 'the real service encodes = as %3D');
   assert.equal(g.pageItems({ items: [1, 2] }).length, 2);
   console.log('game data merge checks passed');
 })();

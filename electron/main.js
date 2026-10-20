@@ -70,7 +70,7 @@ const dataUrlOk = (u) => { try { const x = new URL(u); return x.protocol === 'ht
 const FAKE = process.env.KAMA_FAKE_GAMEDATA ? JSON.parse(process.env.KAMA_FAKE_GAMEDATA) : null; // used by automated tests only
 ipcMain.handle('gamedata:json', async (_e, url) => {
   if (!dataUrlOk(url)) return { ok: false, error: 'blocked url' };
-  if (FAKE) return /meta\/version/.test(url) ? { ok: true, json: { version: 'test' } } : (/items\/equipment/.test(url) ? { ok: true, json: FAKE } : { ok: false, status: 404 });
+  if (FAKE) return /meta\/version/.test(url) ? { ok: true, json: { version: 'test' } } : (/items\/equipment/.test(url) ? { ok: true, json: /page\[number\]=1(&|$)/.test(url) ? FAKE : { items: [] } } : { ok: false, status: 404 });
   try { const r = await net.fetch(url); if (!r.ok) return { ok: false, status: r.status }; return { ok: true, json: await r.json() }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });

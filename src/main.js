@@ -1326,17 +1326,18 @@ $('gd-update').addEventListener('click', async function () {
     for (var s = 0; s < SUBTYPES.length; s++) {
       var sub = SUBTYPES[s], first;
       try { first = await gdJson(sub + '?page[size]=100&page[number]=1'); } catch (e) { if (e.status === 404) continue; throw e; }
-      var pages = lastPage(first), got = pageItems(first).slice();
-      var n = 2;
-      await Promise.all([0, 1, 2, 3].map(async function () {
-        while (n <= pages) {
-          var pg = n++;
-          st.textContent = 'Downloading ' + sub + ' (page ' + pg + '/' + pages + ')...';
-          var j = null;
-          for (var t = 0; t < 3 && !j; t++) { try { j = await gdJson(sub + '?page[size]=100&page[number]=' + pg); } catch (e) { if (t === 2) throw e; } }
-          got = got.concat(pageItems(j));
-        }
-      }));
+      var got = pageItems(first).slice(), pages = lastPage(first), n = 2, done = false;
+      // Page count comes from the "last" link; if it is missing, keep going until a page comes back short.
+      while (!done && n <= Math.max(pages, 400)) {
+        var batch = [];
+        for (var q = 0; q < 4 && n <= Math.max(pages, 400); q++) batch.push(n++);
+        st.textContent = 'Downloading ' + sub + ' (page ' + batch[0] + (pages > 1 ? '/' + pages : '') + ')...';
+        var outs = await Promise.all(batch.map(async function (pg) {
+          for (var t = 0; t < 3; t++) { try { return pageItems(await gdJson(sub + '?page[size]=100&page[number]=' + pg)); } catch (e) { if (e.status === 404 || e.status === 400) return []; if (t === 2) throw e; } }
+        }));
+        outs.forEach(function (o) { got = got.concat(o); if (o.length < 100) done = true; });
+        if (pages > 1 && n > pages) done = true;
+      }
       all = all.concat(got); notes.push(sub + ' ' + got.length);
     }
     if (all.length < 1000) throw new Error('only ' + all.length + ' items came back, so nothing was changed');

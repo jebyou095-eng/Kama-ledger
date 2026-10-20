@@ -11,7 +11,7 @@ export function pageItems(json) {
 }
 export function lastPage(json) {
   const l = json && json._links && json._links.last;
-  const m = typeof l === 'string' && l.match(/page(?:\[|%5B)number(?:\]|%5D)=(\d+)/i);
+  const m = typeof l === 'string' && l.match(/page(?:\[|%5B)number(?:\]|%5D)(?:=|%3D)(\d+)/i);
   return m ? Number(m[1]) : 1;
 }
 export const gfxOf = (it) => {
