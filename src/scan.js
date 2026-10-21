@@ -271,8 +271,8 @@ export function countGlyphs(canvas) {
 
 // Zero-setup mode: one sparse OCR pass over the whole frame finds every panel by its own text.
 // Returns fractions of the frame, one box per panel that is actually on screen.
-export async function autoDetect(frame) {
-  const k = Math.min(2, Math.max(1.4, 1500 / frame.height));
+export async function autoDetect(frame, kOverride) {
+  const k = kOverride || Math.min(2, Math.max(1.4, 1500 / frame.height));
   const c = document.createElement('canvas');
   c.width = Math.round(frame.width * k); c.height = Math.round(frame.height * k);
   const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(frame, 0, 0, c.width, c.height);
@@ -290,6 +290,8 @@ export async function autoDetect(frame) {
     out[key] = { x: x / W, y: y / H, w: Math.min(W - x, b.w) / W, h: Math.min(H - y, b.h) / H };
   });
   Object.defineProperty(out, '_layout', { value: found, enumerable: false });
+  Object.defineProperty(out, '_words', { value: words, enumerable: false });
+  Object.defineProperty(out, '_k', { value: k, enumerable: false });
   return out;
 }
 
@@ -305,4 +307,14 @@ export function sigDiff(a, b) {
   if (!a || !b) return 255;
   let t = 0; for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]);
   return t / a.length;
+}
+
+export const poolSize = () => (pool ? pool.list.length : 0);
+export function cropJpeg(frame, box, maxW, q) {
+  const x = Math.max(0, Math.round(box.x)), y = Math.max(0, Math.round(box.y));
+  const w = Math.max(8, Math.min(frame.width - x, Math.round(box.w))), h = Math.max(8, Math.min(frame.height - y, Math.round(box.h)));
+  const k = Math.min(1, maxW / w);
+  const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext('2d').drawImage(frame, x, y, w, h, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
 }

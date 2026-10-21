@@ -5,6 +5,8 @@ import { parseLots } from './items.js';
 import { parseBudget, parseMarketChart, parsePopup, snapItem } from './market.js';
 import { mergeIndex, SUBTYPES, pageItems, lastPage } from './gamedata.js';
 import * as scan from './scan.js';
+import { runDiagnostics } from './diag.js';
+import { APP_BUILD } from './diag-plan.js';
 import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
 /*CORE*/
@@ -1433,6 +1435,40 @@ function scanNow() {
   if (!frame) { $('scan-status').textContent = 'Nothing to scan: share the game window first.'; return Promise.resolve(); }
   return scanFrame(frame);
 }
+/* ---- diagnostics: one click, one small file; writes nothing to your lists ---- */
+var diagFrames = [];
+$('diag-files').addEventListener('change', async function () {
+  var files = [].slice.call(this.files); this.value = ''; diagFrames = [];
+  for (var i = 0; i < files.length; i++) {
+    var url = await new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(files[i]); });
+    diagFrames.push(await scan.frameFromUrl(url));
+  }
+  $('diag-status').textContent = diagFrames.length + ' screenshot(s) loaded. Click “Run diagnostics”.';
+});
+$('diag-run').addEventListener('click', async function () {
+  var btn = this, st = $('diag-status');
+  if (!P) { st.textContent = 'Load the game data first (Data tab).'; return; }
+  if (!stream && !diagFrames.length && !stillFrame) { st.textContent = 'Share the game window first (Start screen share), or choose screenshot file(s).'; return; }
+  if (scanning) { st.textContent = 'A scan is running, try again in a few seconds.'; return; }
+  btn.disabled = true; scanning = true;
+  try {
+    var plan = (await import('./diag-plan.js')).PLAN;
+    var res = await runDiagnostics({
+      P: P, snapItem: snapItem, parsePopup: parsePopup, parseLots: parseLots, parseBudget: parseBudget, appVersion: APP_BUILD,
+      includeChat: $('diag-chat').checked, status: function (t) { st.textContent = t; },
+      grab: async function (n) {
+        if (diagFrames.length) return diagFrames[n] || null;
+        if (stream) return scan.frameFromVideo($('vid'));
+        return stillFrame;
+      }
+    });
+    var text = JSON.stringify(res);
+    var name = 'kama-diag-' + res.plan + '-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.json';
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name; a.click();
+    st.textContent = 'Done in ' + (res.totalMs / 1000).toFixed(1) + ' s. File saved: ' + name + ' (' + Math.round(text.length / 1024) + ' KB). Send it to Claude.';
+  } catch (e) { st.textContent = 'Diagnostics failed: ' + e.message; }
+  scanning = false; btn.disabled = false;
+});
 /* ---- live scan: watches the shared window, scans each new screen once it has settled ---- */
 var liveTimer = null, liveLast = null, livePrev = null;
 async function liveTick() {
