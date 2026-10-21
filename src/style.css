@@ -326,3 +326,58 @@ label.btn { display: inline-flex; align-items: center; gap: 6px; color: var(--tx
 .row > .btn, .row > button { flex: none; }
 .scanlog { max-height: 7.5em; overflow: auto; font-size: 12px; color: var(--mu); }
 .rv input[type="checkbox"], .rv .pn-sel { flex: none; }
+
+/* ===== Theme: "Turquoise" — ink navy, turquoise, kama gold; chunky game-style buttons ===== */
+:root {
+  --bg: #eceffa; --card: #fff; --tx: #1d2347; --mu: #66709a; --bd: #d9def0;
+  --ok: #12945a; --bad: #d8433f; --ac: #0f9f8f; --ac-soft: #d9f5f0; --gold: #f2b02a;
+  --ink: #1d2347; --ink2: #2b3566; --lift: #b9c1e0; --shadow: 0 6px 0 #d3d9ef;
+}
+body { font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", system-ui, sans-serif; background: var(--bg); }
+h1 { font: 800 26px/1.05 "Arial Rounded MT Bold", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #fff; letter-spacing: .2px; }
+.app-header { margin: 0 0 14px; padding: 14px 18px; background: var(--ink); border-radius: 18px; box-shadow: 0 6px 0 #0f1430; }
+.brand-lockup img { width: 52px; height: 52px; filter: drop-shadow(0 3px 0 #0006); transition: transform .35s cubic-bezier(.3,1.6,.5,1); }
+.brand-lockup img:hover { transform: rotate(-14deg) scale(1.08); }
+.brand-lockup p { color: #aab4e6; }
+.profile-tools { color: #aab4e6; }
+.app-navigation { background: transparent; border: 0; padding: 0; margin-bottom: 14px; }
+nav { gap: 7px; }
+nav button, .btn { border: 2px solid var(--bd); border-bottom-width: 4px; border-radius: 12px; background: #fff; font-weight: 600; padding: 7px 13px 5px; transition: transform 90ms ease, border-color 120ms ease, background-color 120ms ease; }
+nav button:hover, .btn:hover { border-color: var(--lift); transform: translateY(-1px); }
+nav button:active, .btn:active { transform: translateY(2px); border-bottom-width: 2px; margin-bottom: 2px; }
+nav button.on { background: var(--gold); border-color: #d9951a; color: #3d2600; font-weight: 800; }
+.primary-button { background: var(--ac); border-color: #0a7a6d; color: #fff; }
+.primary-button:hover { background: #12b3a1; border-color: #0a7a6d; }
+.desktop-capture-controls #global-share-toggle { color: #fff; background: var(--ac); border-color: #0a7a6d; }
+.desktop-capture-controls #global-auto-toggle { color: var(--ink); }
+.desktop-capture-controls #global-auto-toggle:disabled { color: #8d96bd; background: #e5e8f6; border-color: #cfd5ec; }
+.stop-button { color: #fff; background: var(--bad); border-color: #a82f2c; }
+section { border: 2px solid var(--bd); border-radius: 18px; box-shadow: var(--shadow); }
+input, select, textarea { background: #f7f8fe; border: 2px solid var(--bd); border-radius: 10px; }
+textarea:focus, input:focus, select:focus { outline: 3px solid #8fe0d5; outline-offset: 0; border-color: var(--ac); }
+.btn:focus-visible, nav button:focus-visible { outline: 3px solid #8fe0d5; outline-offset: 2px; }
+th { color: var(--mu); }
+.budget { background: #fff3cf; color: #7a4d00; border-radius: 999px; font-weight: 700; }
+.capture-status { background: #eef0fb; border-radius: 999px; padding: 5px 12px; }
+.stale-banner, .interaction-status { background: #fff3cf; border-left-color: var(--gold); color: #6b4700; border-radius: 0 10px 10px 0; }
+.items-review { background: #fff8e1; border: 2px solid #f2d27a; border-radius: 14px; }
+.profile-box { background: #f4f6fe; border: 2px solid var(--bd); border-radius: 14px; }
+.workflow-link { background: var(--ac-soft); color: #0a7a6d; border-radius: 999px; padding: 3px 11px; font-weight: 600; }
+.workflow-link:hover { background: #bdeee6; }
+/* Item rows: ink navy cards with a coloured status edge */
+.irow { border: 0; border-radius: 14px; box-shadow: 0 4px 0 #0f1430; background: linear-gradient(90deg, var(--st) 0, var(--ink2) 26%, var(--ink) 100%); }
+.irow.st-go { --st: #25d366; }
+.irow.st-loss { --st: #ff5a5a; }
+.irow.st-neutral { --st: #8d96bd; }
+.irow.st-unknown { --st: #4b5688; }
+.icon { border-radius: 10px; background: #12183a; color: #aab4e6; }
+.irow:hover { filter: brightness(1.08); }
+.irow .ok, .irow .sell-easy { color: #7df0b0; }
+.irow .bad, .irow .sell-hard { color: #ffa3a0; }
+.idetail { background: #12183acc; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.nav-group { text-transform: none; letter-spacing: 0; opacity: 1; font-size: 12px; font-weight: 700; color: var(--mu); }
+input[type=checkbox] { accent-color: var(--ac); }
+.card, .fold { border: 2px solid var(--bd); border-radius: 14px; }
+.step { background: var(--ac); }
+.pn-head, .rv { border-radius: 12px; }
