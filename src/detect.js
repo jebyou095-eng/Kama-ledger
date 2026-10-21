@@ -57,7 +57,7 @@ export function detectMarket(words) {
     const hw = Math.max(niv.x1 - niv.x0, 12);
     const headerBottom = Math.max(niv.y1, prix.y1) + 2;
     const levelX0 = cx(niv) - 0.9 * hw, levelX1 = cx(niv) + 0.9 * hw;
-    const priceX0 = Math.max(prix.x0 - 0.6 * hw, levelX1 + 2);
+    const priceX0 = levelX1 + 2;   // right-aligned prices can start well left of the header word: never clip a leading digit
     let priceX1 = (moyen ? moyen.x1 : prix.x1) + 0.9 * hw;
 
     const below = words.filter((w) => w.y0 > headerBottom);
@@ -98,21 +98,21 @@ export function detectPopup(words) {
   const buy = lines.filter((l) => l.words.some((w) => like(w.text, 'acheter', 0.72) && letters(w.text).length >= 5));
   const qty = lines.filter((l) => l.words.some((w) => /^quantit/.test(letters(w.text))) || /inventaire\s*:/i.test(l.text));
   for (const P of lines.filter((l) => isPrix(l) && !l.words.some((w) => like(w.text, 'niveau', 0.78) && letters(w.text).length >= 5))) {
-    // the lot list sits below the "Prix moyen" line: ACHETER buttons, or the "Quantité … en inventaire" line
-    const lower = buy.concat(qty).filter((l) => l.cy > P.cy && l.cy < P.cy + P.h * 18 && l.x1 > P.x0 - P.h * 3 && l.x0 < P.x1 + P.h * 14);
-    if (!lower.length) continue;
-    // the "Niv." line is the one above (or the same line when OCR merged title and level)
-    const top = lines.filter((q) => q.cy <= P.cy + 1 && P.cy - q.cy < P.h * 4 && q.x0 >= P.x0 - 3 * P.h && q.x0 < P.x1).sort((a, b) => a.cy - b.cy)[0] || P;
-    const last = lower.sort((a, b) => b.y1 - a.y1)[0];
-    const side = Math.max(P.y1 - top.y0, P.h * 3);
-    const x1 = Math.max(P.x1, ...lower.map((l) => l.x1)) + 8 * P.h;
-    const x0 = Math.min(top.x0, P.x0) - 5 * P.h;
+    // the lot list sits below the "Prix moyen" line: a "Quantité … en inventaire" line, then one row per lot with ACHETER
+    const u = median(P.words.map(hh)) || P.h;
+    const near = (l) => l.cy > P.cy && l.cy < P.cy + u * 20 && l.x1 > P.x0 - u * 8 && l.x0 < P.x1 + u * 20;
+    const q = qty.filter(near)[0], bs = buy.filter(near);
+    if (!q && !bs.length) continue;
+    const top = lines.filter((l) => l.cy <= P.cy + 1 && P.cy - l.cy < u * 4 && l.x0 >= P.x0 - 3 * u && l.x0 < P.x1).sort((a, b) => a.cy - b.cy)[0] || P;
+    const left = Math.min(top.x0, P.x0, q ? q.x0 : Infinity) - 3;
     const y0 = top.y0 - top.h * 0.5;
-    return {
-      kind: 'popup',
-      box: { x: x0, y: y0, w: x1 - x0, h: last.y1 + last.h * 0.4 - y0 },
-      icon: { x: x0 - side * 0.2, y: y0, w: side, h: side },
-    };
+    const bottom = bs.length ? Math.max(...bs.map((l) => l.y1)) + 14 : (q ? q.y1 : P.y1) + 11 * u;
+    // right edge: follow the words of the panel rows until a wide empty gap
+    let right = Math.max(P.x1, q ? q.x1 : 0, ...bs.map((l) => l.x1));
+    words.filter((w) => w.y0 >= P.y0 && w.y1 <= bottom + 4 && w.x0 >= left).sort((a, b) => a.x0 - b.x0).forEach((w) => { if (w.x0 - right < 5 * u) right = Math.max(right, w.x1); });
+    right += 6;
+    const side = Math.max(P.y1 - top.y0, u * 3);
+    return { kind: 'popup', box: { x: left, y: y0, w: right - left, h: bottom - y0 }, icon: { x: left - side * 0.2, y: y0, w: side, h: side } };
   }
   return null;
 }

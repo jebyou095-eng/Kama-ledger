@@ -1464,61 +1464,63 @@ function bestNameInLines(lines, minScore) {
   return best;
 }
 async function scanFrame(frame) {
+  var tStart = performance.now();
   if (scanning) { $('scan-status').textContent = 'A scan is already running.'; return; }
   scanning = true;
   var prof = profile;
   if (!profileKeys().length) {
     $('scan-status').textContent = 'Looking for the game panels...';
-    try { prof = await scan.autoDetect(frame); } catch (e) { scanning = false; $('scan-status').textContent = 'Could not read the screen: ' + e.message; return; }
+    try { prof = await scan.autoDetect(frame); window.klTiming = { detect: Math.round(performance.now() - tStart) }; } catch (e) { scanning = false; $('scan-status').textContent = 'Could not read the screen: ' + e.message; return; }
   }
   var keys = PROFILE_TYPES.map(function (t) { return t[0]; }).filter(function (k) { return prof[k]; });
   if (!keys.length) { scanning = false; $('scan-status').textContent = 'No game panel on screen (open the market, a lot, Recettes or the chat).'; return { empty: true }; }
-  var out = [], types = P ? Object.values(P.idx.types) : [];
+  var types = P ? Object.values(P.idx.types) : [];
   $('scan-status').textContent = 'Scanning ' + keys.join(', ') + '...';
-  for (var i = 0; i < keys.length; i++) {
-    var k = keys[i];
+  async function readKey(k) {
+    var tk = performance.now();
     try {
       if (k === 'market') {
         var m = await scan.readMarketList(frame, prof.market, types, prof._layout && prof._layout.market);
         var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
-        window.klLastScan = { market: m.rows };
+        window.klLastScan = Object.assign(window.klLastScan || {}, { market: m.rows });
         var res = await itemsUi.applyMarket(rows);
-        out.push('Market ' + rows.length + ' rows: ' + res.staged + ' waiting for approval' + (res.auto ? ', ' + res.auto + ' registered' : '') + (res.review ? ' (' + res.review + ' need a look)' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
+        return ('Market ' + rows.length + ' rows: ' + res.staged + ' waiting for approval' + (res.auto ? ', ' + res.auto + ' registered' : '') + (res.review ? ' (' + res.review + ' need a look)' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
       } else if (k === 'popup') {
         var pl = await scan.readText(frame, prof.popup, 'white');
         var pop = parsePopup(pl), lots = parseLots(pl.join('\n'));
-        if (pop.name.length < 3 || (!Object.keys(lots).length && !pop.avg)) { out.push('Popup: could not read it'); continue; }
+        if (pop.name.length < 3 || (!Object.keys(lots).length && !pop.avg)) return 'Popup: could not read it';
         window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
         var ps = P ? snapItem(P, pop.name, pop.level, pop.type) : null;
         var pr = await itemsUi.stagePopup({ a: ps && ps.score >= 0.9 ? ps.item : null, name: pop.name, level: pop.level, avg: pop.avg, lots: lots });
-        out.push(pr.ignored ? 'Popup: item not recognised, ignored' : 'Popup ' + pr.name + ': ' + pr.lots + ' lot price(s) ' + (pr.auto ? 'registered' : 'waiting for approval'));
+        return (pr.ignored ? 'Popup: item not recognised, ignored' : 'Popup ' + pr.name + ': ' + pr.lots + ' lot price(s) ' + (pr.auto ? 'registered' : 'waiting for approval'));
       } else if (k === 'chart') {
         var cl = await scan.readText(frame, prof.chart, 'white');
         var ch = parseMarketChart(cl), cn = P ? bestNameInLines(cl, 0.8) : null;
-        if (!cn) { out.push('Cours du marché: item name not recognised'); continue; }
+        if (!cn) return 'Cours du marché: item name not recognised';
         await itemsUi.applyChart({ a: cn.item, sold: ch.sold, avg: ch.avg, median: ch.median });
-        out.push('Cours du marché ' + cn.item[1] + ': ' + (ch.sold !== null ? ch.sold + ' sold' : 'no “articles vendus” found'));
+        return ('Cours du marché ' + cn.item[1] + ': ' + (ch.sold !== null ? ch.sold + ' sold' : 'no “articles vendus” found'));
       } else if (k === 'recipe') {
         var rl = await scan.readText(frame, prof.recipe, 'white');
         var rn = P ? bestNameInLines(rl, 0.85) : null;
-        if (!rn) { out.push('Recettes: item name not recognised'); continue; }
+        if (!rn) return 'Recettes: item name not recognised';
         var ar = await itemsUi.addItemRow(rn.item);
-        out.push('Recettes: ' + ar.name + (ar.created ? ' added with ' + ar.ingredients + ' ingredients' : ' already listed'));
+        return ('Recettes: ' + ar.name + (ar.created ? ' added with ' + ar.ingredients + ' ingredients' : ' already listed'));
       } else if (k === 'budget') {
         var bv = parseBudget(await scan.readNumber(frame, prof.budget));
-        if (bv === null) { out.push('Budget: unreadable'); continue; }
+        if (bv === null) return 'Budget: unreadable';
         await itemsUi.setBudget(bv);
-        out.push('Budget ' + F(bv));
+        return ('Budget ' + F(bv));
       } else if (k === 'chat') {
         var cl2 = await scan.readText(frame, prof.chat, 'grey');
         var tx = transactionLines(cl2.map(normalizeTransactionLine));
         if (tx.length) await saveLedgerTransactions(tx, ['chat-' + new Date().toISOString().slice(0, 10)]);
-        out.push('Chat: ' + tx.length + ' purchase/sale line(s) saved');
+        return ('Chat: ' + tx.length + ' purchase/sale line(s) saved');
       }
-    } catch (e) { out.push(k + ': ' + e.message); }
+    } catch (e) { return k + ': ' + e.message; } finally { (window.klTiming = window.klTiming || {})[k] = Math.round(performance.now() - tk); }
   }
+  var out = (await Promise.all(keys.map(readKey))).filter(Boolean);
   scanning = false;
-  var text = out.join(' · ');
+  var text = out.join(' · ') + ' (' + ((performance.now() - tStart) / 1000).toFixed(1) + ' s)';
   $('scan-status').textContent = 'Done. ' + text;
   await itemsUi.logScan(text);
   recordAction('scan');

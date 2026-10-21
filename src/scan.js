@@ -2,7 +2,8 @@ import { detectPanels } from './detect.js';
 import { cleanInt, findColumns, rowAnchors, splitNameType, wordsOf } from './market.js';
 
 // Browser side of the scanner: offline OCR worker, image clean-up, and one reader per game panel.
-let worker = null, loading = null;
+let pool = null, loading = null;
+const POOL_SIZE = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
 
 function loadScript(src) {
   return new Promise((res, rej) => {
@@ -14,24 +15,37 @@ function loadScript(src) {
   });
 }
 
+// A few OCR workers so independent panels can be read at the same time (as many as the CPU can afford).
 export function getWorker() {
-  if (worker) return Promise.resolve(worker);
+  if (pool) return Promise.resolve(pool.list[0]);
   if (!loading) {
     loading = (async () => {
       const base = new URL('./ocr/', document.baseURI).href;
       await loadScript(base + 'tesseract.min.js');
       const make = (core) => window.Tesseract.createWorker('fra', 1, { workerPath: base + 'worker.min.js', corePath: base + core, langPath: base, gzip: true, workerBlobURL: false });
-      try { worker = await make('tesseract-core-simd-lstm.wasm.js'); } catch (e) { worker = await make('tesseract-core-lstm.wasm.js'); }
-      return worker;
+      let core = 'tesseract-core-simd-lstm.wasm.js';
+      let first;
+      try { first = await make(core); } catch (e) { core = 'tesseract-core-lstm.wasm.js'; first = await make(core); }
+      const more = await Promise.all(Array.from({ length: POOL_SIZE - 1 }, () => make(core).catch(() => null)));
+      pool = { list: [first, ...more.filter(Boolean)], free: [], waiting: [] };
+      pool.free = pool.list.slice();
+      return first;
     })().catch((e) => { loading = null; throw e; });
   }
   return loading;
 }
+function acquire() {
+  return new Promise((res) => { if (pool.free.length) res(pool.free.pop()); else pool.waiting.push(res); });
+}
+function release(w) { const next = pool.waiting.shift(); if (next) next(w); else pool.free.push(w); }
 
 export async function recognize(canvas, opts) {
-  const w = await getWorker();
-  await w.setParameters({ tessedit_pageseg_mode: String((opts && opts.psm) || 6), tessedit_char_whitelist: (opts && opts.whitelist) || '' });
-  return (await w.recognize(canvas)).data;
+  await getWorker();
+  const w = await acquire();
+  try {
+    await w.setParameters({ tessedit_pageseg_mode: String((opts && opts.psm) || 6), tessedit_char_whitelist: (opts && opts.whitelist) || '' });
+    return (await w.recognize(canvas)).data;
+  } finally { release(w); }
 }
 
 export const textLines = (data) => String(data.text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -119,40 +133,83 @@ async function readMarketRows(frame, box, L, typeNames) {
   return { ...(await readRows(frame, box, cols, anchors, typeNames)), columnsFromHeader: true };
 }
 
+// Several row crops stacked into one image, so one OCR call reads all rows instead of one call per row.
+function stack(crops) {
+  const GAP = 28, w = Math.max(...crops.map((c) => c.width)), h = crops.reduce((t, c) => t + c.height + GAP, GAP);
+  const c = document.createElement('canvas'); c.width = w + 2 * GAP; c.height = h;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  const bands = []; let y = GAP;
+  crops.forEach((cr) => { g.drawImage(cr, GAP, y); bands.push([y, y + cr.height]); y += cr.height + GAP; });
+  return { canvas: c, bands };
+}
+// Words of a stacked read, grouped back into the row they came from.
+function bandLines(data, bands) {
+  const words = (data.words || []).filter((w) => String(w.text).trim());
+  return bands.map(([y0, y1]) => {
+    const mine = words.filter((w) => (w.bbox.y0 + w.bbox.y1) / 2 >= y0 - 14 && (w.bbox.y0 + w.bbox.y1) / 2 <= y1 + 14).sort((p, q) => (p.bbox.y0 + p.bbox.y1) / 2 - (q.bbox.y0 + q.bbox.y1) / 2);
+    const lines = [];
+    mine.forEach((w) => { const cy = (w.bbox.y0 + w.bbox.y1) / 2, last = lines[lines.length - 1]; if (last && Math.abs(cy - last.cy) < (w.bbox.y1 - w.bbox.y0) * 0.7) { last.w.push(w); } else lines.push({ cy, w: [w] }); });
+    return { lines: lines.map((l) => l.w.sort((p, q) => p.bbox.x0 - q.bbox.x0).map((w) => w.text).join(' ')), conf: mine.length ? mine.reduce((t, w) => t + w.confidence, 0) / mine.length : 0 };
+  });
+}
+
+// Slow path for one row: several renderings, a read is trusted only when its digit count equals the glyphs on screen.
+async function priceByVoting(frame, at, cols, box) {
+  const priceReads = []; let glyphs = null;
+  for (const [k, bias] of [[3, 0], [4, 0], [4, 30], [6, 0], [5, 45]]) {
+    const crop = whiteText(frame, at(cols.priceX0, box.w), k, bias);
+    if (glyphs === null) glyphs = countGlyphs(crop);
+    const d = await recognize(crop, { psm: 7, whitelist: '0123456789 ' });
+    const v = cleanInt(d.text);
+    priceReads.push({ v, ok: v !== null && String(v).length === glyphs });
+  }
+  const votes = {};
+  priceReads.filter((r) => r.ok).forEach((r) => { votes[r.v] = (votes[r.v] || 0) + 1; });
+  const top = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
+  const fallback = priceReads.find((r) => r.v);
+  const allSame = priceReads.length > 0 && priceReads.every((r) => r.v && r.v === priceReads[0].v);
+  return { price: top ? Number(top[0]) : (fallback ? fallback.v : null), sure: (!!top && top[1] >= 2) || (allSame && (glyphs === 0 || String(priceReads[0].v).length === glyphs)), reads: priceReads.map((r) => r.v), glyphs };
+}
+
 async function readRows(frame, box, cols, anchors, typeNames) {
-  const rows = [];
+  const t0 = performance.now();
+  const rowsIn = [];
   for (const a of anchors) {
     const y0 = Math.max(a.y0, cols.headerBottom || 0), y1 = Math.min(a.y1, box.h), h = y1 - y0;
     if (h < 8) continue;
-    const at = (x0, x1) => ({ x: box.x + x0, y: box.y + y0, w: Math.max(4, x1 - x0), h });
-    const nameBox = at(cols.nameX0, cols.levelX0 - 3);
-    const nameData = await recognize(whiteText(frame, nameBox, 4), { psm: 6 });
-    // Price: several renderings; a read is trusted only when its digit count equals the number of glyphs on screen
-    // (OCR tends to drop digits inside runs of 1s).
-    const priceReads = [];
-    let glyphs = null;
-    for (const [k, bias] of [[3, 0], [4, 0], [4, 30], [6, 0], [5, 45]]) {
-      const crop = whiteText(frame, at(cols.priceX0, box.w), k, bias);
-      if (glyphs === null) glyphs = countGlyphs(crop);
-      const d = await recognize(crop, { psm: 7, whitelist: '0123456789 ' });
-      const v = cleanInt(d.text);
-      priceReads.push({ v, ok: v !== null && String(v).length === glyphs });
-    }
-    const votes = {};
-    priceReads.filter((r) => r.ok).forEach((r) => { votes[r.v] = (votes[r.v] || 0) + 1; });
-    const top = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
-    const fallback = priceReads.find((r) => r.v);
-    const allSame = priceReads.length > 0 && priceReads.every((r) => r.v && r.v === priceReads[0].v);
-    const price = top ? Number(top[0]) : (fallback ? fallback.v : null), sure = (!!top && top[1] >= 2) || allSame;
-    const levelData = await recognize(whiteText(frame, at(cols.levelX0, cols.levelX1), 4), { psm: 7, whitelist: '0123456789' });
-    const { name, type } = splitNameType(textLines(nameData), typeNames);
-    const lv = cleanInt(levelData.text);
-    rows.push({
-      rawName: name, nameConf: Math.round(nameData.confidence || 0), type, level: lv && lv <= 200 ? lv : (a.level || null), price, priceSure: sure, priceReads: priceReads.map((r) => r.v), glyphs,
-      icon: icon(frame, squareLeft(box, cols, y0, h)),
-    });
+    rowsIn.push({ a, y0, h, at: (x0, x1) => ({ x: box.x + x0, y: box.y + y0, w: Math.max(4, x1 - x0), h }) });
   }
-  return { rows };
+  if (!rowsIn.length) return { rows: [], ms: 0 };
+  // Fast path: three stacked reads (names, levels, prices) plus a second price read at another scale.
+  const nameCrops = rowsIn.map((r) => whiteText(frame, r.at(cols.nameX0, cols.levelX0 - 3), 4));
+  const lvlCrops = rowsIn.map((r) => whiteText(frame, r.at(cols.levelX0, cols.levelX1), 4));
+  const priceA = rowsIn.map((r) => whiteText(frame, r.at(cols.priceX0, box.w), 4));
+  const priceB = rowsIn.map((r) => whiteText(frame, r.at(cols.priceX0, box.w), 6));
+  const glyphs = priceA.map(countGlyphs);
+  const sn = stack(nameCrops), sl = stack(lvlCrops), sa = stack(priceA), sb = stack(priceB);
+  const dn = await recognize(sn.canvas, { psm: 6 });
+  const dl = await recognize(sl.canvas, { psm: 6, whitelist: '0123456789 ' });
+  const da = await recognize(sa.canvas, { psm: 6, whitelist: '0123456789 ' });
+  const db = await recognize(sb.canvas, { psm: 6, whitelist: '0123456789 ' });
+  const names = bandLines(dn, sn.bands), lvls = bandLines(dl, sl.bands), pa = bandLines(da, sa.bands), pb = bandLines(db, sb.bands);
+  const rows = [];
+  for (let i = 0; i < rowsIn.length; i++) {
+    const r = rowsIn[i];
+    let nm = names[i], lines = nm.lines;
+    if (!lines.length || nm.conf < 60) {   // slow path for an unreadable name
+      const d = await recognize(whiteText(frame, r.at(cols.nameX0, cols.levelX0 - 3), 4), { psm: 6 });
+      lines = textLines(d); nm = { conf: d.confidence || 0 };
+    }
+    const va = cleanInt(pa[i].lines.join('')), vb = cleanInt(pb[i].lines.join(''));
+    let price, sure, reads;
+    if (va !== null && va === vb && String(va).length === glyphs[i]) { price = va; sure = true; reads = [va, vb]; }
+    else { const v = await priceByVoting(frame, r.at, cols, box); price = v.price; sure = v.sure; reads = v.reads; }
+    let lv = cleanInt(lvls[i].lines.join(''));
+    if (!lv || lv > 200) { const d = await recognize(whiteText(frame, r.at(cols.levelX0, cols.levelX1), 4), { psm: 7, whitelist: '0123456789' }); lv = cleanInt(d.text); }
+    const { name, type } = splitNameType(lines, typeNames);
+    rows.push({ rawName: name, nameConf: Math.round(nm.conf || 0), type, level: lv && lv <= 200 ? lv : (r.a.level || null), price, priceSure: sure, priceReads: reads, glyphs: glyphs[i], icon: icon(frame, squareLeft(box, cols, r.y0, r.h)) });
+  }
+  return { rows, ms: Math.round(performance.now() - t0) };
 }
 
 export async function readText(frame, frac, mode) {
@@ -215,7 +272,7 @@ export function countGlyphs(canvas) {
 // Zero-setup mode: one sparse OCR pass over the whole frame finds every panel by its own text.
 // Returns fractions of the frame, one box per panel that is actually on screen.
 export async function autoDetect(frame) {
-  const k = Math.min(2, Math.max(1, 1620 / frame.height));
+  const k = Math.min(2, Math.max(1.4, 1500 / frame.height));
   const c = document.createElement('canvas');
   c.width = Math.round(frame.width * k); c.height = Math.round(frame.height * k);
   const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(frame, 0, 0, c.width, c.height);
