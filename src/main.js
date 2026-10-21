@@ -397,6 +397,7 @@ function updateCaptureControls() {
   $('global-share-toggle').textContent = stream ? 'Stop screen share' : 'Start screen share';
   $('global-auto-toggle').textContent = 'Auto capture ' + (auto ? 'on' : 'off');
   $('global-auto-toggle').disabled = !stream;
+  $('live-dot').hidden = !($('live-scan').checked && stream);
   $('game-interaction').textContent = 'Game input: ' + (interactionEnabled ? 'on' : 'off');
   $('game-interaction').setAttribute('aria-pressed', String(interactionEnabled));
   $('game-interaction').classList.toggle('game-input-on', interactionEnabled);
@@ -1468,6 +1469,7 @@ $('live-scan').addEventListener('change', function () {
     liveTimer = setInterval(function () { liveTick().catch(function () {}); }, 1200);
     $('scan-status').textContent = 'Live scan on.';
   }
+  updateCaptureControls();
 });
 function bestNameInLines(lines, minScore) {
   var best = null;

@@ -90,7 +90,34 @@ export function initItems(env) {
     render();
   }
 
-  function status(t) { $('items-status').textContent = t; }
+
+  const reduce = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+  function toast(msg) {
+    const box = $('toasts'); if (!box || !msg) return;
+    const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; box.appendChild(t);
+    while (box.children.length > 3) box.removeChild(box.firstChild);
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 3200);
+  }
+  function burst(el) {
+    if (reduce() || !el) return;
+    const r = el.getBoundingClientRect();
+    for (let i = 0; i < 9; i++) {
+      const c = document.createElement('i'); c.className = 'coin';
+      c.style.left = (r.left + r.width / 2) + 'px'; c.style.top = (r.top + r.height / 2) + 'px';
+      c.style.setProperty('--dx', (Math.random() * 160 - 80) + 'px'); c.style.setProperty('--dy', (-60 - Math.random() * 90) + 'px');
+      document.body.appendChild(c); setTimeout(() => c.remove(), 900);
+    }
+  }
+  function countUp(el, from, to, plus) {
+    if (!el) return;
+    const fmt = (v) => (plus && v > 0 ? '+' : '') + F(v);
+    if (reduce() || from === to || !isFinite(from) || !isFinite(to)) { el.textContent = fmt(to); return; }
+    const t0 = performance.now(), dur = 700;
+    const step = (now) => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(Math.round(from + (to - from) * e)); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+  let lastBudget = null, lastHeroKey = '', lastHeroVal = 0, seenPrices = null;
+  function status(t) { $('items-status').textContent = t; if (t) toast(t); }
 
   function rowHtml(rec, ev, maxAbs) {
     const o = open.has(rec.id), P = env.getP();
@@ -246,11 +273,17 @@ export function initItems(env) {
     rows.sort((a, b) => sort === 'name' ? a.rec.name.localeCompare(b.rec.name) : sort === 'old' ? (a.rec.priceAt || 0) - (b.rec.priceAt || 0)
       : (ORDER[a.ev.status] - ORDER[b.ev.status]) || ((b.ev.craft ?? -Infinity) - (a.ev.craft ?? -Infinity)) || a.rec.name.localeCompare(b.rec.name));
     const heroRows = Object.values(items).map((rec) => ({ rec, ev: evaluate(rec, c) }));
-    if ($('items-hero')) $('items-hero').innerHTML = heroHtml(heroRows);
+    if ($('items-hero')) {
+      $('items-hero').innerHTML = heroHtml(heroRows);
+      const hn = $('items-hero').querySelector('.hero-num'), hc = $('items-hero').querySelector('.hero-card');
+      if (hn && hc) { const key = hc.dataset.id, val = Number(hn.textContent.replace(/[^\d-]/g, '')) || 0; if (key !== lastHeroKey || val !== lastHeroVal) { countUp(hn, key === lastHeroKey ? lastHeroVal : 0, val, true); hc.classList.add('pop'); } lastHeroKey = key; lastHeroVal = val; }
+    }
     syncView();
     const total = rows.length; rows = rows.slice(0, shown);
     const maxAbs = Math.max(1, ...rows.map((r) => Math.abs(r.ev.craft || 0)));
-    root.innerHTML = rows.length ? rows.map((r) => (view === 'slots' ? slotHtml(r.rec, r.ev, maxAbs) : rowHtml(r.rec, r.ev, maxAbs))).join('') + (total > rows.length ? '<button class="btn f-more" type="button">Show more (' + (total - rows.length) + ' left)</button>' : '') : '<p class="mu">Nothing here yet. Type an item name above and press Enter: its ingredients are added for you.</p>';
+    const prevSeen = seenPrices; seenPrices = {}; rows.forEach((r) => { seenPrices[r.rec.id] = r.rec.price || 0; });
+    root.innerHTML = rows.length ? rows.map((r) => (view === 'slots' ? slotHtml(r.rec, r.ev, maxAbs) : rowHtml(r.rec, r.ev, maxAbs))).join('') + (total > rows.length ? '<button class="btn f-more" type="button">Show more (' + (total - rows.length) + ' left)</button>' : '') : '<p class="empty"><span class="empty-coin">K</span>Nothing here yet. Type an item name above and press Enter: its ingredients are added for you.</p>';
+    if (prevSeen) root.querySelectorAll('[data-id]').forEach((n) => { const id = Number(n.dataset.id); if (id in prevSeen && prevSeen[id] !== seenPrices[id]) n.classList.add('flash'); });
   }
 
   function toIcon(file) {
@@ -482,7 +515,9 @@ export function initItems(env) {
     const el = $('items-budget'); if (!el) return;
     if (!budget) { el.textContent = 'Budget: not scanned yet'; return; }
     const d = budget.prev !== null && budget.prev !== undefined ? budget.value - budget.prev : null;
+    const prevB = lastBudget; lastBudget = budget.value;
     el.innerHTML = 'Budget: <b>' + F(budget.value) + '</b> ' + (d ? '<span class="' + (d > 0 ? 'ok' : 'bad') + '">' + (d > 0 ? '+' : '') + F(d) + '</span> ' : '') + '<span class="mu">(' + new Date(budget.at).toLocaleString('fr-FR') + ')</span>';
+    if (prevB !== null && prevB !== budget.value) countUp(el.querySelector('b'), prevB, budget.value);
   }
 
   async function logScan(text) {
@@ -544,6 +579,7 @@ export function initItems(env) {
     if (!accept && !refuse) return;
     const chosen = review.filter((r) => sel.has(r.id));
     if (refuse) { review = review.filter((r) => !sel.has(r.id)); sel.clear(); await persistReview(); renderReview(); status(chosen.length + ' price(s) refused.'); return; }
+    if (accept) burst(accept);
     let ok = 0, stuck = 0;
     for (const r of chosen) { if (await acceptEntry(r)) { ok++; review = review.filter((x) => x !== r); sel.delete(r.id); } else stuck++; }
     await persistReview(); render(); renderReview();

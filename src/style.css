@@ -505,3 +505,31 @@ html[data-theme="light"] .nav-group { color: #5d6068; }
 .hero-empty { min-height: 0; padding: 18px 22px; }
 .hero-card { min-height: 150px; }
 html[data-theme="game"] .icon { background: #1d130c; color: #ffcf6b; }
+
+/* ===== Life: toasts, coin burst, count-up pop, flash, live light, calmer Items bar ===== */
+.toasts { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: grid; gap: 8px; justify-items: end; pointer-events: none; }
+.toast { max-width: 420px; padding: 10px 16px; border-radius: 14px; background: var(--ink, #1d2347); color: #fff; font-weight: 600; box-shadow: 0 10px 30px #0006; border: 1px solid #ffffff30; animation: toast-in .28s cubic-bezier(.3,1.5,.5,1); }
+.toast.out { opacity: 0; transform: translateY(8px); transition: opacity .3s, transform .3s; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+.coin { position: fixed; z-index: 60; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff1b0, #ffc83d 55%, #c88a10); box-shadow: 0 0 0 2px #7a4d00; pointer-events: none; animation: coin-fly .85s cubic-bezier(.2,.8,.3,1) forwards; }
+@keyframes coin-fly { to { transform: translate(var(--dx), var(--dy)) rotate(300deg); opacity: 0; } }
+.hero-card.pop { animation: pop .5s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pop { 0% { transform: scale(.97); } 60% { transform: scale(1.015); } 100% { transform: scale(1); } }
+.flash { animation: flash 1.2s ease-out; }
+@keyframes flash { 0% { box-shadow: 0 0 0 3px #5fe3a1, 0 0 24px #5fe3a188; } 100% { box-shadow: 0 0 0 0 #5fe3a100; } }
+.live-dot { display: inline-flex; align-items: center; gap: 7px; margin-right: 6px; color: #7df0b0; font-size: 12px; font-weight: 700; }
+.live-dot[hidden] { display: none; }
+.live-dot::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: #25d366; animation: livepulse 1.4s ease-out infinite; }
+@keyframes livepulse { 0% { box-shadow: 0 0 0 0 #25d366aa; } 100% { box-shadow: 0 0 0 10px #25d36600; } }
+.app-header { flex-wrap: wrap; }
+.filters { margin: 4px 0 8px; }
+.filters summary { display: inline-block; cursor: pointer; padding: 4px 12px; border-radius: 999px; background: var(--ac-soft); color: var(--mu); font-weight: 600; font-size: 12px; list-style: none; }
+.filters summary::-webkit-details-marker { display: none; }
+.filters[open] summary { color: var(--tx); }
+.intro { margin: 0 0 8px; }
+.empty { display: flex; align-items: center; gap: 12px; padding: 22px; border: 2px dashed var(--bd); border-radius: 16px; color: var(--mu); }
+.empty-coin { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff1b0, #ffc83d 60%, #c88a10); color: #7a4d00; font-weight: 900; flex: none; animation: bob 2.4s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-4px) rotate(-8deg); } }
+.irow, .slot, .hero-card { transition: transform .15s ease, filter .15s ease, border-color .15s ease; }
+.irow:hover { transform: translateY(-1px); }
+@media (prefers-reduced-motion: reduce) { .toast, .coin, .hero-card.pop, .flash, .live-dot::before, .empty-coin { animation: none !important; } }

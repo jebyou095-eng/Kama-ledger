@@ -9,12 +9,14 @@
   </head>
   <body>
     <main>
+      <div id="toasts" class="toasts" aria-live="polite"></div>
       <dialog id="graph-dlg" class="gdlg"></dialog>
       <header class="app-header">
         <div class="brand-lockup">
           <img src="%BASE_URL%assets/kama-ledger.svg" alt="" width="48" height="48">
           <div><h1>Kama Ledger</h1><p>Local-first Dofus economy workspace</p></div>
         </div>
+        <span id="live-dot" class="live-dot" hidden>live scan</span>
         <div class="desktop-capture-controls" aria-label="Screen capture controls">
           <label class="theme-pick">Theme <select id="theme-sel"><option value="navy">Night navy</option><option value="game">Game brown</option><option value="light">Bright lime</option></select></label>
           <button class="btn" id="global-share-toggle" type="button" onclick="toggleShare()">Start screen share</button>
@@ -26,17 +28,18 @@
       </div>
 
       <section id="t-items">
-        <p class="mu">Your market list. Type an item name to add it: its recipe ingredients are added automatically. Click a row to open it. Green = worth crafting, grey = cost equals profit, red = loss if crafted. Saved on this computer as <b>Items</b> and <b>Ingredients</b>.</p>
+        <p class="mu intro">Type an item name to track it: its recipe ingredients come with it. Click a row to edit it. Green means worth crafting, red means a loss.</p>
         <div class="row items-bar">
           <label>Add an item or ingredient<input id="items-add" list="items-dl" autocomplete="off" placeholder="e.g. Marteau d'Ivoire"></label><datalist id="items-dl"></datalist>
           <button class="btn primary-button" id="items-add-btn" type="button">Add</button>
           <label>Search<input id="items-search" placeholder="filter list"></label>
-          <label>Show<select id="items-kind"><option value="all">All</option><option value="item">Items only</option><option value="ingredient">Ingredients only</option><option value="craft">Crafts (items with a recipe)</option><option value="recycle">Recycles (pépites known)</option><option value="brisage">Brisage (concass value known)</option></select></label>
+          </div>
+        <details class="filters"><summary>Filters and sorting</summary><div class="row"><label>Show<select id="items-kind"><option value="all">All</option><option value="item">Items only</option><option value="ingredient">Ingredients only</option><option value="craft">Crafts (items with a recipe)</option><option value="recycle">Recycles (pépites known)</option><option value="brisage">Brisage (concass value known)</option></select></label>
           <label>Colour<select id="items-filter"><option value="all">All</option><option value="go">Green</option><option value="neutral">Grey</option><option value="loss">Red</option><option value="unknown">No data</option></select></label>
           <label>Sort<select id="items-sort"><option value="best">Best first</option><option value="name">Name</option><option value="old">Oldest price</option></select></label>
           <label>Grey if within ±%<input id="items-band" size="3" inputmode="numeric"></label>
           <label>Easy if sold ≥<input id="items-easy" size="3" inputmode="numeric"></label>
-        </div>
+        </div></details>
         <div class="row"><span id="items-count" class="mu"></span><span id="items-status" class="mu" aria-live="polite"></span><button class="btn" id="items-export" type="button">Export all categories (5 files)</button><label class="btn">Import…<input id="items-import" type="file" accept=".json" multiple hidden></label></div>
         <div class="row scan-strip"><span id="items-budget" class="budget"></span><span class="seg" id="items-view" role="group" aria-label="View"><button type="button" data-v="list" class="on">List</button><button type="button" data-v="slots">Slots</button></span></div>
         <div class="home"><div id="items-hero" class="hero"></div>
