@@ -94,6 +94,7 @@ export function initItems(env) {
   const reduce = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
   function toast(msg) {
     const box = $('toasts'); if (!box || !msg) return;
+    try { window.dispatchEvent(new CustomEvent('kl-toast', { detail: msg })); } catch { /* ignore */ }
     const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; box.appendChild(t);
     while (box.children.length > 3) box.removeChild(box.firstChild);
     setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 3200);
@@ -452,6 +453,19 @@ export function initItems(env) {
     return true;
   }
   // rows: [{ a, score, rawName, level, type, price, icon }] from the market list
+
+  function summary() {
+    const c = ctx(), all = Object.values(items).concat(Object.values(ingredients));
+    const rows = Object.values(items).map((rec) => ({ rec, ev: evaluate(rec, c) }));
+    const best = rows.filter((r) => r.ev.craft !== null && r.ev.craft > 0).sort((a, b) => b.ev.craft - a.ev.craft)[0];
+    return { tracked: Object.keys(items).length, pending: review.length, clean: review.filter((r) => !r.why).length, stale: all.filter((r) => isStale(r.priceAt)).length, best: best ? { id: best.rec.id, name: best.rec.name, profit: F(best.ev.craft) } : null };
+  }
+  async function acceptClean() {
+    const todo = review.filter((r) => !r.why); let ok = 0;
+    for (const r of todo) { if (await acceptEntry(r)) { ok++; review = review.filter((x) => x !== r); sel.delete(r.id); } }
+    if (ok) { await persistReview(); render(); renderReview(); }
+    return ok;
+  }
   async function applyMarket(rows) {
     const res = { staged: 0, auto: 0, review: 0, skipped: 0, ignored: 0 };
     for (let r of rows) {
@@ -594,5 +608,5 @@ export function initItems(env) {
     renderReview(); renderBudget(); renderScanLog();
   }
 
-  return { stagePopup, fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
+  return { summary, acceptClean, openGraph, stagePopup, fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }

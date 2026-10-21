@@ -533,3 +533,76 @@ html[data-theme="game"] .icon { background: #1d130c; color: #ffcf6b; }
 .irow, .slot, .hero-card { transition: transform .15s ease, filter .15s ease, border-color .15s ease; }
 .irow:hover { transform: translateY(-1px); }
 @media (prefers-reduced-motion: reduce) { .toast, .coin, .hero-card.pop, .flash, .live-dot::before, .empty-coin { animation: none !important; } }
+
+/* ===== Kamo, the animated market helper ===== */
+main { padding-bottom: 210px; }
+.kamo { position: fixed; left: 14px; bottom: 10px; z-index: 40; display: flex; align-items: flex-end; gap: 6px; pointer-events: none; --kg: #ffc83d; --kg2: #c88a10; --kink: #5a3600; --kcap: #d94b3a; }
+.kamo[hidden] { display: none; }
+.kamo > * { pointer-events: auto; }
+.kamo-btn { width: 132px; padding: 0; border: 0; background: none; cursor: pointer; }
+.kamo-svg { width: 100%; height: auto; overflow: visible; display: block; }
+.kamo-bubble { position: relative; max-width: 330px; margin-bottom: 70px; padding: 12px 34px 12px 16px; border-radius: 18px; background: #fff7e0; color: #3a2418; font: 600 14px/1.4 "Segoe UI", sans-serif; box-shadow: 0 6px 0 #0003, 0 12px 28px #0005; animation: bubble-in .3s cubic-bezier(.3,1.5,.5,1); }
+.kamo-bubble::before { content: ""; position: absolute; left: -9px; bottom: 26px; border: 9px solid transparent; border-right-color: #fff7e0; border-left: 0; }
+@keyframes bubble-in { from { opacity: 0; transform: translateX(-10px) scale(.94); } }
+.kb-text { min-height: 20px; }
+.kb-x { position: absolute; top: 4px; right: 6px; border: 0; background: none; color: #8a6a40; font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+.kb-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.kb-actions:empty { display: none; }
+.kb-act { border: 0; border-radius: 999px; padding: 5px 14px; font: 800 13px "Segoe UI", sans-serif; cursor: pointer; background: #ffc83d; color: #3a2418; box-shadow: 0 3px 0 #b07f12; }
+.kb-act:hover { filter: brightness(1.06); } .kb-act:active { transform: translateY(2px); box-shadow: 0 1px 0 #b07f12; }
+#kamo-back { position: fixed; left: 14px; bottom: 14px; z-index: 40; width: 44px; height: 44px; border-radius: 50%; border: 3px solid #b07f12; background: radial-gradient(circle at 35% 30%, #fff1b0, #ffc83d 60%, #c88a10); color: #7a4d00; font: 900 18px sans-serif; cursor: pointer; box-shadow: 0 4px 0 #0004; }
+#kamo-back[hidden] { display: none; }
+/* drawing */
+.k-shadow { fill: #0003; } .k-legs path { stroke: #7a4d00; stroke-width: 9; stroke-linecap: round; fill: none; }
+.k-arm path { stroke: var(--kg2); stroke-width: 9; stroke-linecap: round; fill: none; }
+.k-rim { fill: var(--kg2); } .k-face-bg { fill: var(--kg); } .k-ring { fill: none; stroke: #e29b0c; stroke-width: 4; stroke-dasharray: 3 7; }
+.k-shine { fill: #fff; opacity: .5; } .k-cheek { fill: #ff9a7a; opacity: .55; }
+.k-white { fill: #fff; } .k-pupil { fill: #3a2200; } .k-lid { fill: var(--kg); transform-box: fill-box; transform-origin: top; transform: scaleY(0); animation: blink 4.6s infinite; }
+@keyframes blink { 0%, 94%, 100% { transform: scaleY(0); } 96.5% { transform: scaleY(1); } }
+.k-happy path, .k-sleep path { fill: none; stroke: var(--kink); stroke-width: 4.5; stroke-linecap: round; }
+.k-brow { fill: none; stroke: var(--kink); stroke-width: 3.5; stroke-linecap: round; }
+.k-tear { fill: #7ec8ff; stroke: none !important; animation: tear 2.2s ease-in infinite; }
+@keyframes tear { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(20px); opacity: 0; } }
+.k-m { fill: none; stroke: var(--kink); stroke-width: 4; stroke-linecap: round; } .k-m-happy { fill: var(--kink); } .k-m-scan, .k-m-sleep { fill: var(--kink); stroke: none; }
+.k-cap path { fill: var(--kcap); } .k-cap circle { fill: #fff; }
+.k-glass circle { fill: #bfe9ff55; stroke: #3a2418; stroke-width: 5; } .k-glass path { stroke: #3a2418; stroke-width: 6; stroke-linecap: round; }
+.k-zzz text { fill: #9aa3d6; font: 800 22px sans-serif; opacity: 0; } .k-sparks path { fill: #fff6b0; opacity: 0; }
+/* mood switches */
+.kamo .k-happy, .kamo .k-sad, .kamo .k-sleep, .kamo .k-m, .kamo .k-glass, .kamo .k-zzz, .kamo .k-sparks { display: none; }
+.kamo .k-m-idle { display: block; }
+.kamo[data-mood=happy] .k-open, .kamo[data-mood=sad] .k-open, .kamo[data-mood=sleep] .k-open { display: none; }
+.kamo[data-mood=happy] .k-happy, .kamo[data-mood=sad] .k-sad, .kamo[data-mood=sleep] .k-sleep { display: block; }
+.kamo[data-mood=happy] .k-m, .kamo[data-mood=sad] .k-m, .kamo[data-mood=scan] .k-m, .kamo[data-mood=sleep] .k-m { display: none; }
+.kamo[data-mood=happy] .k-m-happy, .kamo[data-mood=sad] .k-m-sad, .kamo[data-mood=scan] .k-m-scan, .kamo[data-mood=sleep] .k-m-sleep { display: block; }
+.kamo[data-mood=scan] .k-glass { display: block; animation: glass 1.6s ease-in-out infinite; }
+.kamo[data-mood=sleep] .k-zzz { display: block; } .kamo[data-mood=sleep] .k-zzz text { animation: zz 3s ease-in-out infinite; } .kamo[data-mood=sleep] .k-zzz text:last-child { animation-delay: 1.2s; }
+.kamo[data-mood=happy] .k-sparks { display: block; } .kamo[data-mood=happy] .k-sparks path { animation: twinkle 1.4s ease-in-out infinite; } .kamo[data-mood=happy] .k-sparks path:nth-child(2) { animation-delay: .4s; } .kamo[data-mood=happy] .k-sparks path:nth-child(3) { animation-delay: .8s; }
+/* motion */
+.k-body { transform-box: fill-box; transform-origin: 50% 100%; animation: breathe 3.2s ease-in-out infinite; }
+.k-pupils { animation: none; }
+.kamo.look .k-pupils { animation: look 2.4s ease-in-out; }
+.kamo[data-mood=scan] .k-pupils { animation: sweep 1.2s ease-in-out infinite; }
+.kamo[data-mood=think] .k-pupils { transform: translate(5px, -4px); }
+.kamo[data-mood=happy] .k-arm-l { transform: rotate(-34deg); transform-origin: -40px 12px; } .kamo[data-mood=happy] .k-arm-r { transform: rotate(34deg); transform-origin: 40px 12px; }
+.kamo[data-mood=happy] .k-body { animation: bounce .9s ease-in-out infinite; }
+.kamo[data-mood=sad] .k-body { animation: droop 3.4s ease-in-out infinite; }
+.kamo[data-mood=sleep] .k-body { animation: snooze 4s ease-in-out infinite; }
+.kamo[data-mood=scan] .k-arm-r { animation: reach 1.6s ease-in-out infinite; transform-origin: 40px 12px; }
+.kamo.hop .kamo-btn { animation: hop .55s cubic-bezier(.3,1.4,.5,1); }
+@keyframes breathe { 50% { transform: scale(1.02, 1.035); } }
+@keyframes bounce { 50% { transform: translateY(-9px); } }
+@keyframes droop { 50% { transform: translateY(3px) scale(1.01, .98); } }
+@keyframes snooze { 50% { transform: scale(1.03, .98); } }
+@keyframes hop { 40% { transform: translateY(-26px) rotate(-4deg); } 100% { transform: none; } }
+@keyframes sweep { 0%, 100% { transform: translateX(-5px); } 50% { transform: translateX(5px); } }
+@keyframes look { 0%, 100% { transform: none; } 25% { transform: translate(-6px, 1px); } 60% { transform: translate(6px, -2px); } }
+@keyframes glass { 50% { transform: translate(-8px, -6px) rotate(-12deg); } }
+@keyframes reach { 50% { transform: rotate(-16deg); } }
+@keyframes zz { 0% { opacity: 0; transform: translateY(8px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+@keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(.4); } 50% { opacity: 1; transform: scale(1); } }
+.k-sparks path { transform-box: fill-box; transform-origin: center; }
+@media (max-width: 900px) { .kamo-bubble { max-width: 220px; } .kamo-btn { width: 96px; } }
+@media (prefers-reduced-motion: reduce) { .kamo *, .kamo-bubble { animation: none !important; } }
+html[data-theme="light"] .kamo-bubble { background: #fff; border: 2px solid #111; }
+html[data-theme="light"] .kamo-bubble::before { display: none; }
+.kamo-btn { order: -1; } .kamo-bubble::before { left: -9px; }

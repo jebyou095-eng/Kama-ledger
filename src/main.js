@@ -1,6 +1,7 @@
 import './style.css';
 import JSZip from 'jszip';
 import { initTheme } from './theme.js';
+import { initKamo } from './kamo.js';
 import { initItems } from './items-ui.js';
 import { parseLots } from './items.js';
 import { parseBudget, parseMarketChart, parsePopup, snapItem } from './market.js';
@@ -211,7 +212,9 @@ tabs.forEach(function (t, i) {
   b.id = 'b-' + t[0];
   $('nav').appendChild(b);
 });
+var kamoRef = null;
 function show(k) {
+  if (kamoRef) kamoRef.onTab(k);
   tabs.forEach(function (t) {
     $('t-' + t[0]).classList.toggle('on', t[0] === k);
     $('b-' + t[0]).classList.toggle('on', t[0] === k);
@@ -1675,3 +1678,15 @@ window.fillBrisage = fillBrisage;
 window.loadTess = loadTess;
 window.getPrices = getPrices;
 window.craftRender = craftRender;
+
+kamoRef = initKamo({
+  getState: function () { var t = ''; try { t = localStorage.tab || ''; } catch (e) {} return { stream: !!stream, scanning: scanning, live: $('live-scan').checked, tab: t }; },
+  items: itemsUi,
+  actions: {
+    share: function () { toggleShare(); },
+    scan: function () { show('cap'); $('scan-now').click(); },
+    show: function () { show('items'); var r = $('items-review'); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
+    add: function () { show('items'); $('items-add').focus(); },
+    best: function (id) { show('items'); itemsUi.openGraph(id); },
+  },
+});
