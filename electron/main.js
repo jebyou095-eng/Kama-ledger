@@ -71,13 +71,13 @@ const FAKE = process.env.KAMA_FAKE_GAMEDATA ? JSON.parse(process.env.KAMA_FAKE_G
 ipcMain.handle('gamedata:json', async (_e, url) => {
   if (!dataUrlOk(url)) return { ok: false, error: 'blocked url' };
   if (FAKE) return /meta\/version/.test(url) ? { ok: true, json: { version: 'test' } } : (/items\/equipment/.test(url) ? { ok: true, json: /page\[number\]=1(&|$)/.test(url) ? (/fields\[item\]=recipe/.test(url) ? FAKE : { items: FAKE.items.map((x) => { const y = { ...x }; delete y.recipe; return y; }) }) : { items: [] } } : { ok: false, status: 404 });
-  try { const r = await net.fetch(url); if (!r.ok) return { ok: false, status: r.status }; return { ok: true, json: await r.json() }; }
+  try { const r = await net.fetch(url, { redirect: 'error' }); if (!r.ok) return { ok: false, status: r.status }; return { ok: true, json: await r.json() }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 ipcMain.handle('gamedata:image', async (_e, url) => {
   if (!dataUrlOk(url)) return { ok: false, error: 'blocked url' };
   if (FAKE) return { ok: true, dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' };
-  try { const r = await net.fetch(url); if (!r.ok) return { ok: false, status: r.status }; const b = Buffer.from(await r.arrayBuffer()); return { ok: true, dataUrl: 'data:image/png;base64,' + b.toString('base64') }; }
+  try { const r = await net.fetch(url, { redirect: 'error' }); if (!r.ok) return { ok: false, status: r.status }; const b = Buffer.from(await r.arrayBuffer()); return { ok: true, dataUrl: 'data:image/png;base64,' + b.toString('base64') }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 
@@ -272,6 +272,10 @@ function createWindow() {
   });
   mainWindow.webContents.on('preload-error', (_event, path, error) => logLine(`preload-error ${path}: ${error && error.stack || error}`));
   mainWindow.webContents.on('render-process-gone', (_event, details) => logLine(`render-process-gone ${JSON.stringify(details)}`));
+
+  // The app never needs to open other pages: refuse every navigation and new window.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event, url) => { if (!url.startsWith('file:') && !url.startsWith('data:text/html') && !(devUrl && url.startsWith(devUrl))) event.preventDefault(); });
 
   mainWindow.webContents.on('did-finish-load', () => { activeShareOwner = mainWindow; });
   mainWindow.on('closed', () => { if (activeShareOwner === mainWindow) activeShareOwner = null; });

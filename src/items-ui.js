@@ -103,7 +103,7 @@ export function initItems(env) {
       : (ev.craft !== null ? '<b>' + money(ev.craft, true) + '</b><small>best craft using it</small>' : '<small>no tracked craft yet</small>');
     return '<article class="irow st-' + ev.status + (o ? ' open' : '') + '" data-id="' + rec.id + '">'
       + '<div class="irow-main" tabindex="0" role="button" aria-expanded="' + o + '">'
-      + (rec.icon ? '<img class="icon" alt="" src="' + rec.icon + '">' : '<span class="icon">' + esc(initials(rec.name)) + '</span>')
+      + (rec.icon ? '<img class="icon" alt="" src="' + esc(rec.icon) + '">' : '<span class="icon">' + esc(initials(rec.name)) + '</span>')
       + '<span class="iname"><b>' + esc(rec.name) + '</b><small>' + (rec.level ? 'Lvl ' + rec.level + ' · ' : '') + (typeName(rec) ? esc(typeName(rec)) + ' · ' : '') + (rec.custom ? 'Custom ' : '') + (rec.kind === 'item' ? 'Item' : 'Ingredient') + '</small><small>' + age(rec) + (ev.sell !== 'unknown' ? ' · <span class="sell-' + ev.sell + '">' + (ev.sell === 'easy' ? 'easy to sell' : 'hard to sell') + '</span>' : '') + '</small></span>'
       + '<span class="icell"><label>Price</label><input class="f-price" inputmode="numeric" value="' + (rec.price ? F(rec.price) : '') + '" placeholder="kamas"></span>'
       + '<span class="icell"><label>If recycled</label><b>' + money(ev.recycled) + '</b></span>'
@@ -274,8 +274,9 @@ export function initItems(env) {
   });
   $('items-import').addEventListener('change', async (e) => {
     let n = 0;
+    if (!confirm('Import adds these entries and replaces any entry that has the same id (prices included). Continue?')) { e.target.value = ''; return; }
     for (const f of e.target.files) {
-      try { const list = JSON.parse(await f.text()); for (const rec of Array.isArray(list) ? list : []) { if (rec && Number.isFinite(rec.id) && rec.name) { await commit({ ...rec, kind: rec.kind === 'item' ? 'item' : 'ingredient' }); n++; } } } catch (err) { status('Could not read ' + f.name); }
+      try { const list = JSON.parse(await f.text()); for (const rec of Array.isArray(list) ? list : []) { if (rec && Number.isFinite(rec.id) && rec.name) { if (rec.icon && !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+\/=]+$/.test(rec.icon)) delete rec.icon; await commit({ ...rec, kind: rec.kind === 'item' ? 'item' : 'ingredient' }); n++; } } } catch (err) { status('Could not read ' + f.name); }
     }
     e.target.value = ''; status(n + ' entries imported.'); render();
   });
@@ -416,7 +417,7 @@ export function initItems(env) {
         const a = P && P.byId[r.itemId];
         const diff = r.old && r.price ? Math.round((r.price / r.old - 1) * 100) : null;
         return '<div class="rv' + (r.why ? ' check' : '') + '" data-rv="' + r.id + '"><input type="checkbox" class="pn-sel"' + (sel.has(r.id) ? ' checked' : '') + ' aria-label="Select">'
-          + (r.icon ? '<img class="icon" alt="" src="' + r.icon + '">' : '<span class="icon">' + esc(initials(a ? a[1] : r.rawName)) + '</span>')
+          + (r.icon ? '<img class="icon" alt="" src="' + esc(r.icon) + '">' : '<span class="icon">' + esc(initials(a ? a[1] : r.rawName)) + '</span>')
           + '<span class="pn-nm"><input class="pn-name" id="pn-' + String(r.id).replace('.', '-') + '" list="items-dl" autocomplete="off" value="' + esc(a ? a[1] : '') + '" placeholder="Pick the right item" aria-label="Item">'
           + '<small>' + (r.kind === 'popup' ? 'Lot popup' : 'Market list') + (r.rawName && a && r.rawName !== a[1] ? ' · read as “' + esc(r.rawName) + '”' : '') + (r.level ? ' · lvl ' + r.level : '') + '</small></span>'
           + (r.kind === 'popup' ? '<span class="pn-lots">' + Object.keys(r.lots).map((k) => k + ': ' + F(r.lots[k])).join(' · ') + (r.avg ? ' · avg ' + F(r.avg) : '') + '</span>'
