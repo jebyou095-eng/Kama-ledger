@@ -1,72 +1,45 @@
 # Kama Ledger
 
-Offline Dofus profit tracker with a Windows desktop app and a browser-compatible legacy build.
+Offline Dofus market helper (Windows desktop app, Electron). It reads your game screen, matches every item to the game data, keeps prices for items and ingredients, and shows which crafts are worth it.
 
-## Windows desktop app
-Run `npm run package:win` to create the branded x64 installer at
-`release/windows/Kama-Ledger-Setup-1.0.0-x64.exe`. The installer creates Start Menu and desktop shortcuts.
-The desktop app includes a screen/window picker, Stop sharing control, OCR capture, and local IndexedDB storage.
-Its workflow shortcuts learn your most-used tabs and preferred capture source locally; this profile can be reset
-from the app header. No interaction profile is uploaded.
-
-To run the desktop app from source, use `npm run start`. To build a portable executable instead of an installer,
-use `npm run package:portable`.
-
-### Capture hotkey and correcting what OCR read
-- **Hotkey:** with the desktop app running and a screen or window shared, press the capture hotkey (default Ctrl+Shift+K, change it in the Capture tab) while you are in the game. It captures the shared window and beeps; it only reads pixels and sends nothing to the game. A browser cannot do this, so in the browser Esc captures while the page is focused.
-- **Review before saving:** after Read all, every recognised purchase and sale appears in an editable table (type, item, quantity, amount). Fix anything wrong, use the suggestion button for misspelled names (needs the Data tab loaded), delete bad lines, then press Save to ledger. Nothing reaches the ledger until you save.
-- **Edit later:** in Database > Ledger History, click a name, quantity or amount to correct it, or use the delete button. Edited rows are marked.
-
-The original single-file version remains available at `kama-ledger.html` for Chrome or Edge.
-
-Tabs: Log total, Capture (screen share + OCR), Database (every capture), Recycling, Sell & tax, Brisage, Craft, Data.
-
-## Starting clean
-
-The app keeps its data in your Windows profile, so an update never loses it, but an older saved copy can get in the way. The game data shipped with the app now always replaces an older saved copy. For a full fresh start use **Data tab → Erase ALL app data**, or close the app and run **Reset Kama Ledger data.bat**.
-
-## Launching the app (Windows)
+## Start it
 
 1. Install Node.js (LTS) once from https://nodejs.org.
-2. Double-click **Start Kama Ledger.bat**. The first run installs what it needs (internet, a few minutes); after that it opens the app in a few seconds.
+2. Double-click **Start Kama Ledger.bat**. First run installs what it needs (internet, a few minutes). The launcher repairs itself once if the build fails and writes `build-log.txt`.
+3. For a clean slate: **Game data tab → Danger zone**, or **Reset Kama Ledger data.bat**.
 
-The game data (19 382 items, 4 402 recipes, Datafus) is bundled, so the **Items** tab works immediately.
+## The tabs
 
-## Fast collection: scan profile
+| Group | Tab | What it is for |
+|---|---|---|
+| Work | **Items** | Your item and ingredient lists with prices, craft profit (green / grey / red), the craft tree, categories, and the **Prices waiting for your approval** window |
+| Work | **Scan** | Share the game window, scan (button, hotkey or live), diagnostics, manual areas, the older screenshot reader |
+| Work | **Chat log** | Paste chat lines to total purchases and sales |
+| Calculators | Craft · Recycling · Brisage · Sell & tax | The calculators |
+| Stored data | **History** | Saved captures and the ledger history |
+| Stored data | **Game data** | Update recipes/levels/images, look up an item, advanced loading, erase everything |
 
-In the **Capture** tab, share the game window (or load a screenshot), then draw each panel once under **Scan profile**: market list, lot popup, Cours du marché, Recettes, budget, chat. After that, one press of the capture hotkey (default Ctrl+Shift+K) or **Scan now** reads every region you drew and updates the lists cumulatively:
+## How a scan works
 
-- **Market list:** every row (image, name, level, average price) creates or updates an item or ingredient, keeps the row image, and appends to the price history.
-- **Lot popup:** updates the prices by lot and the average price.
-- **Cours du marché:** articles sold (best effort) and median/average price.
-- **Recettes:** adds the item and its ingredients from the game data.
-- **Budget:** stored with the previous value, shown in the Items tab.
-- **Chat:** purchases and sales go to the ledger (repeats are not duplicated).
+1. **Scan → Share screen or window** (the game).
+2. **Scan now**, the capture hotkey (default Ctrl+Shift+K), or tick **Live scan**.
+3. The app finds the panels itself (market list, lot popup, Recettes, budget, chat), reads names, levels and prices, and matches each name to the game data. Unreadable names are ignored.
+4. Prices wait in **Items → Prices waiting for your approval**. Select, **Accept** or **Refuse**. Fix a name by picking an item from the suggestions. Tick *Accept clean matches automatically* to skip the window for confident matches.
 
-Names are matched to the game data using the item level, which repairs most OCR typos. A row is saved by itself only when the name matches the game data and the price was read consistently. Everything else (new items not in Datafus, doubtful prices, a price that moved more than 5x) goes to **Needs review** in the Items tab, where one click accepts, corrects or dismisses it. Keep the game window at the same size and position, or redraw the regions. OCR runs offline (bundled).
+Nothing the scan reads is written to your lists before you accept it (unless you turn that option on). Chat purchases/sales and the budget are saved directly.
 
-## Items and Ingredients lists
+## Game data
 
-The **Items** tab is your market list. Type an item name to add it: if it has a recipe, its ingredients are added to the Ingredients list too. Each row shows price, value if recycled, value if concassed (brisage), what you can craft with it, and whether crafting is worth it:
+**Game data → Update game data** downloads current items, recipes, levels and icons from the public Dofus data service (api.dofusdu.de), once. Item recipes can also be edited by hand in an item's detail panel. Edited recipes are tagged and survive updates.
 
-- green: profit after the 2% listing tax is more than the neutral band (default 2% of the craft cost)
-- grey: within the band, cost = profit
-- red: loss if crafted
+## Exports
 
-Click a row to open it: prices by lot (1 / 10 / 100 / 1 000, or paste the popup text), average price, articles sold (easy to sell from the threshold in the toolbar), Pépites if recycled, value if concassed, the ingredient prices, and the price history. Prices older than 7 days are flagged. The data is saved on the computer in the IndexedDB stores `Items` and `Ingredients`; **Export Items + Ingredients** writes `Items.json` and `Ingredients.json`, and **Import** reads them back.
+**Items → Export all categories** writes Items, Ingredients, Crafts, Recycles and Brisage as five JSON files.
 
-Items newer than Datafus (Dec 2024) are not in the game data: they can be added as custom ingredients (prices only, no recipe).
+## Diagnostics
 
-## Game data (Datafus)
-1. Open the Data tab.
-2. Choose the Datafus zip, the `Datafus-master` folder, or just these files:
-   `data/B/entities_json/Items.part00.json`, `Recipes.part00.json`, `ItemTypes.part00.json`, `Effects.part00.json`
-   and `data/C/translations_json/i18n_fr.json`.
-3. It takes a few seconds, keeps only names, levels, types, recipes and stats (about 1.5 MB), and saves them in the browser.
-   Next time it loads by itself. "Export compact file" saves `kama-data.json`, which can be loaded instead of the big zip.
+**Scan → Diagnostics for Claude** reads the current screen (or screenshot files) like a scan, writes nothing to your lists, and saves one small `.json` file. What it tests is defined in `src/diag-plan.js`.
 
-Used by: Log total (level, type, typo suggestions), Craft (recipe cost and profit), Brisage (level and stats filled from the item), Data (search).
-Datafus stops at Dofus 2 / December 2024: newer items or changed recipes are missing.
+## For developers
 
-## Tests
-`npm test` (39 checks, no install needed). Pure logic sits between `/*CORE*/` and `/*END*/` in the legacy html.
+See `docs/ARCHITECTURE.md`. `npm test` runs all tests, `npm run build` builds, `npm run start` runs the desktop app from source.

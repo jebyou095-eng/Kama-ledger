@@ -182,7 +182,9 @@ var KNOWN = { vitalite: [0.2, 1], force: [1, 1], intelligence: [1, 1], agilite: 
 var F = function (x) { return isFinite(x) ? Math.round(x).toLocaleString('fr-FR') : '-'; };
 var $ = function (id) { return document.getElementById(id); };
 
-var tabs = [['items', 'Items'], ['log', 'Log total'], ['cap', 'Capture'], ['db', 'Database'], ['rec', 'Recycling'], ['tax', 'Sell & tax'], ['bri', 'Brisage'], ['craft', 'Craft'], ['data', 'Data']];
+// Tabs in the order of the work: collect prices (Items, Scan), then the calculators, then stored data.
+var tabs = [['items', 'Items'], ['cap', 'Scan'], ['log', 'Chat log'], ['craft', 'Craft'], ['rec', 'Recycling'], ['bri', 'Brisage'], ['tax', 'Sell & tax'], ['db', 'History'], ['data', 'Game data']];
+var TAB_GROUP = { items: 'Work', craft: 'Calculators', db: 'Stored data' };
 function loadFlowProfile() {
   try {
     var saved = JSON.parse(localStorage.getItem('kamaLedgerFlow') || '{}');
@@ -198,31 +200,10 @@ function recordAction(action) {
   saveFlowProfile();
   renderWorkflow();
 }
-function renderWorkflow() {
-  var shortcuts = $('workflow-shortcuts');
-  var used = tabs.filter(function (tab) { return flowProfile.views[tab[0]]; });
-  used.sort(function (a, b) { return flowProfile.views[b[0]] - flowProfile.views[a[0]]; });
-  shortcuts.replaceChildren();
-  if (!used.length) {
-    var note = document.createElement('span');
-    note.className = 'mu';
-    note.textContent = 'Your frequent tools will appear here as you work.';
-    shortcuts.appendChild(note);
-  } else {
-    used.slice(0, 3).forEach(function (tab) {
-      var shortcut = document.createElement('button');
-      shortcut.type = 'button';
-      shortcut.className = 'workflow-link';
-      shortcut.textContent = tab[1];
-      shortcut.addEventListener('click', function () { show(tab[0]); });
-      shortcuts.appendChild(shortcut);
-    });
-  }
-  var total = Object.keys(flowProfile.actions).reduce(function (sum, action) { return sum + flowProfile.actions[action]; }, 0);
-  $('adaptive-message').textContent = total ? total + ' workflow interactions learned locally' : 'Your workflow stays on this device.';
-}
+function renderWorkflow() {}   // the old 'frequent tools' strip was removed from the header
 
 tabs.forEach(function (t, i) {
+  if (TAB_GROUP[t[0]]) { var g = document.createElement('span'); g.className = 'nav-group'; g.textContent = TAB_GROUP[t[0]]; $('nav').appendChild(g); }
   var b = document.createElement('button');
   b.textContent = t[1];
   b.onclick = function () { show(t[0]); };
@@ -240,11 +221,6 @@ function show(k) {
   renderWorkflow();
   if (k === 'db' && typeof renderDB === 'function') showDatabaseView(databaseView);
 }
-$('reset-profile').addEventListener('click', function () {
-  flowProfile = { views: {}, actions: {}, preferredCapture: null };
-  saveFlowProfile();
-  renderWorkflow();
-});
 function runLog() {
   var r = parseLog($('log').value);
   $('logres').innerHTML = 'Spent: <span class="big">' + F(r.total) + '</span> kamas in ' + r.lines + ' lines' + (r.income ? ' &nbsp; Income logged: ' + F(r.income) : '');

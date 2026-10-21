@@ -407,9 +407,9 @@ export function initItems(env) {
     if (!review.length) { el.innerHTML = ''; return; }
     const nSel = review.filter((r) => sel.has(r.id)).length;
     el.innerHTML = '<div class="pn-head"><h4>Prices waiting for your approval (' + review.length + ')</h4>'
-      + '<label><input type="checkbox" class="pn-all"' + (list.length && list.every((r) => sel.has(r.id)) ? ' checked' : '') + '> Select all shown</label>'
+      + '<label class="chk"><input type="checkbox" class="pn-all"' + (list.length && list.every((r) => sel.has(r.id)) ? ' checked' : '') + '> Select all shown</label>'
       + '<select class="pn-filter"><option value="all"' + (pfilter === 'all' ? ' selected' : '') + '>All</option><option value="ok"' + (pfilter === 'ok' ? ' selected' : '') + '>Matched, nothing odd</option><option value="check"' + (pfilter === 'check' ? ' selected' : '') + '>Needs a look</option></select>'
-      + '<label><input type="checkbox" class="pn-auto"' + (autoAccept ? ' checked' : '') + '> Accept clean matches automatically</label>'
+      + '<label class="chk"><input type="checkbox" class="pn-auto"' + (autoAccept ? ' checked' : '') + '> Accept clean matches automatically</label>'
       + '<button class="btn primary-button pn-accept" type="button"' + (nSel ? '' : ' disabled') + '>Accept selected (' + nSel + ')</button>'
       + '<button class="btn stop-button pn-refuse" type="button"' + (nSel ? '' : ' disabled') + '>Refuse selected (' + nSel + ')</button></div>'
       + '<div class="pn-list">' + list.map((r) => {
