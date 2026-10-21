@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html data-theme="navy" lang="en">
   <head>
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; worker-src 'self' blob:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <meta charset="UTF-8" />
@@ -9,12 +9,14 @@
   </head>
   <body>
     <main>
+      <dialog id="graph-dlg" class="gdlg"></dialog>
       <header class="app-header">
         <div class="brand-lockup">
           <img src="%BASE_URL%assets/kama-ledger.svg" alt="" width="48" height="48">
           <div><h1>Kama Ledger</h1><p>Local-first Dofus economy workspace</p></div>
         </div>
         <div class="desktop-capture-controls" aria-label="Screen capture controls">
+          <label class="theme-pick">Theme <select id="theme-sel"><option value="navy">Night navy</option><option value="game">Game brown</option><option value="light">Bright lime</option></select></label>
           <button class="btn" id="global-share-toggle" type="button" onclick="toggleShare()">Start screen share</button>
           <button class="btn" id="global-auto-toggle" type="button" onclick="toggleAuto()" disabled>Auto capture off</button>
         </div>
@@ -36,9 +38,11 @@
           <label>Easy if sold ≥<input id="items-easy" size="3" inputmode="numeric"></label>
         </div>
         <div class="row"><span id="items-count" class="mu"></span><span id="items-status" class="mu" aria-live="polite"></span><button class="btn" id="items-export" type="button">Export all categories (5 files)</button><label class="btn">Import…<input id="items-import" type="file" accept=".json" multiple hidden></label></div>
-        <div class="row scan-strip"><span id="items-budget" class="budget"></span></div>
+        <div class="row scan-strip"><span id="items-budget" class="budget"></span><span class="seg" id="items-view" role="group" aria-label="View"><button type="button" data-v="list" class="on">List</button><button type="button" data-v="slots">Slots</button></span></div>
+        <div class="home"><div id="items-hero" class="hero"></div>
+          <div id="items-review" class="items-review" hidden></div>
+        </div>
         <div id="items-scanlog" class="scanlog" aria-live="polite"></div>
-        <div id="items-review" class="items-review" hidden></div>
         <p id="items-stale" class="stale-banner" hidden></p>
         <div id="items-list" class="items-list"></div>
       </section>

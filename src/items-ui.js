@@ -92,7 +92,7 @@ export function initItems(env) {
 
   function status(t) { $('items-status').textContent = t; }
 
-  function rowHtml(rec, ev) {
+  function rowHtml(rec, ev, maxAbs) {
     const o = open.has(rec.id), P = env.getP();
     const craftWith = rec.kind === 'ingredient'
       ? (ev.uses.length ? ev.uses.slice(0, 2).map((u) => esc(u.name) + (u.profit !== null ? ' <b class="' + (u.profit >= 0 ? 'ok' : 'bad') + '">' + money(u.profit, true) + '</b>' : '')).join('<br>') + (ev.uses.length > 2 ? '<br><small>+' + (ev.uses.length - 2) + ' more</small>' : '') : '<small>not used in recipes</small>')
@@ -109,7 +109,8 @@ export function initItems(env) {
       + '<span class="icell"><label>If recycled</label><b>' + money(ev.recycled) + '</b></span>'
       + '<span class="icell"><label>If concassed</label><b>' + money(ev.concassed) + '</b></span>'
       + '<span class="icell wide"><label>' + (rec.kind === 'ingredient' ? 'What you can craft' : 'Crafting') + '</label>' + craftWith + '</span>'
-      + '<span class="icell wide"><label>' + (rec.kind === 'item' ? 'Beneficial to craft?' : 'Best use') + '</label>' + benefit + '</span>'
+      + '<span class="icell wide"><label>' + (rec.kind === 'item' ? 'Beneficial to craft?' : 'Best use') + '</label>' + benefit
+      + (ev.craft !== null && maxAbs ? '<span class="pbar"><i style="width:' + Math.max(6, Math.round(Math.abs(ev.craft) / maxAbs * 100)) + '%"></i></span>' : '') + '</span>'
       + '</div>' + (o ? detailHtml(rec, ev) : '') + '</article>';
   }
 
@@ -144,7 +145,7 @@ export function initItems(env) {
           return '<tr data-ing="' + g[0] + '" data-i="' + i + '"><td>' + esc(it ? it[1] : (ig ? ig.name : '#' + g[0])) + '</td><td><input class="f-qty" size="4" inputmode="numeric" value="' + g[1] + '"></td><td><input class="f-ing" inputmode="numeric" value="' + (pr ? F(pr) : '') + '"></td><td>' + (pr ? F(pr * g[1]) : '–') + '</td><td>' + (ig ? age(ig) : '') + '</td><td><button class="btn f-rdel" type="button" title="Remove this ingredient">✕</button></td></tr>'; }).join('')
         + '</tbody></table><div class="row"><input class="f-radd" list="items-dl" placeholder="Add an ingredient to this recipe"><input class="f-raddq" size="3" inputmode="numeric" value="1"><button class="btn f-raddb" type="button">Add</button>' + (rec.recipe ? '<button class="btn f-rreset" type="button">Back to game data</button>' : '') + '</div>'
         + '<p>Craft cost: <b>' + (ev.cost !== null ? F(ev.cost) : '–') + '</b>' + (rec.price ? ' · net after 2% tax: <b>' + F(rec.price - Math.round(rec.price * 0.02)) + '</b>' : '') + (ev.craft !== null ? ' · profit: <b class="' + (ev.craft >= 0 ? 'ok' : 'bad') + '">' + money(ev.craft, true) + '</b>' : '') + '</p>'
-        + '<h4>Craft tree</h4>' + treeHtml(rec, c0);
+        + '<h4>Craft tree <button class="btn f-graph" type="button">Show graph</button></h4>' + treeHtml(rec, c0);
     }
     if (rec.kind === 'ingredient' && ev.uses.length) {
       body += '<h4>Recipes using it</h4><table class="itab"><thead><tr><th>Item</th><th>Qty</th><th>Profit per craft</th><th></th></tr></thead><tbody>'
@@ -154,6 +155,80 @@ export function initItems(env) {
     body += '<h4>Price history</h4><p class="mu">' + (hist.length ? hist.map((h) => new Date(h[0]).toLocaleDateString('fr-FR') + ': ' + F(h[1])).join(' · ') : 'No history yet.') + '</p>';
     body += '<div class="row"><input class="f-note" placeholder="Note" value="' + esc(rec.note || '') + '"><button class="btn f-del" type="button">Remove from list</button></div></div>';
     return body;
+  }
+
+
+  let view = 'list';
+  try { view = localStorage.getItem('kl-items-view') === 'slots' ? 'slots' : 'list'; } catch { /* storage unavailable */ }
+  const recOf = (id) => items[id] || ingredients[id];
+  const iconOf = (rec, id) => { const r = rec || recOf(id); return r && r.icon ? r.icon : ''; };
+  const short = (n, k = 20) => (String(n).length > k ? String(n).slice(0, k - 1) + '…' : String(n));
+
+  function graphSvg(rec) {
+    const P = env.getP(), c0 = ctx();
+    const tree = buildTree(rec.id, 1, (id) => c0.byId[id], (id) => { const r = ingredients[id] || items[id]; return r && r.price ? r.price : null; },
+      (id) => (P && P.byId[id] ? P.byId[id][1] : (ingredients[id] || items[id] || { name: '#' + id }).name), 2);
+    const W = 900, H = 600, cx = W / 2, cy = H / 2, nodes = [], edges = [];
+    const kids = tree.children;
+    const R1 = kids.length > 6 ? 205 : 180;
+    kids.forEach((k, i) => {
+      const a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, kids.length);
+      const x = cx + R1 * Math.cos(a), y = cy + R1 * 0.82 * Math.sin(a);
+      nodes.push({ n: k, x, y, s: 54 }); edges.push([cx, cy, x, y]);
+      const sub = k.children.slice(0, 5);
+      sub.forEach((g, j) => {
+        const spread = Math.min(1.5, 0.45 * sub.length), aa = a + (sub.length === 1 ? 0 : (j / (sub.length - 1) - 0.5) * spread);
+        const gx = x + 105 * Math.cos(aa), gy = y + 90 * Math.sin(aa);
+        nodes.push({ n: g, x: Math.max(40, Math.min(W - 40, gx)), y: Math.max(30, Math.min(H - 40, gy)), s: 38 });
+        edges.push([x, y, Math.max(40, Math.min(W - 40, gx)), Math.max(30, Math.min(H - 40, gy))]);
+      });
+    });
+    const node = (o, root) => {
+      const n = o.n, ic = root ? iconOf(rec) : iconOf(null, n.id), r = o.s / 2, x = o.x, y = o.y;
+      const col = root ? 'var(--gnode-root)' : 'var(--gnode)';
+      return '<g class="gn" data-id="' + n.id + '"><rect x="' + (x - r) + '" y="' + (y - r) + '" width="' + o.s + '" height="' + o.s + '" rx="' + (r * 0.34) + '" fill="' + col + '"/>'
+        + (ic ? '<image href="' + esc(ic) + '" x="' + (x - r + 4) + '" y="' + (y - r + 4) + '" width="' + (o.s - 8) + '" height="' + (o.s - 8) + '"/>'
+          : '<text x="' + x + '" y="' + (y + o.s * 0.14) + '" text-anchor="middle" class="gi" font-size="' + (o.s * 0.38) + '">' + esc(initials(n.name)) + '</text>')
+        + '<text x="' + x + '" y="' + (y + r + 15) + '" text-anchor="middle" class="gl">' + (root ? '' : n.qty + '× ') + esc(short(n.name)) + '</text>'
+        + (n.price ? '<text x="' + x + '" y="' + (y + r + 29) + '" text-anchor="middle" class="gp">' + F(n.price) + '</text>' : '<text x="' + x + '" y="' + (y + r + 29) + '" text-anchor="middle" class="gp gm">no price</text>') + '</g>';
+    };
+    return '<svg class="graph" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Recipe graph of ' + esc(rec.name) + '">'
+      + edges.map((e) => '<line x1="' + e[0] + '" y1="' + e[1] + '" x2="' + e[2] + '" y2="' + e[3] + '"/>').join('')
+      + nodes.map((o) => node(o, false)).join('') + node({ n: tree, x: cx, y: cy, s: 96 }, true) + '</svg>';
+  }
+  function openGraph(id) {
+    const rec = recOf(id), dlg = $('graph-dlg'); if (!rec || !dlg) return;
+    const ev = evaluate(rec, ctx()), c0 = ctx(), row = c0.byId[id];
+    const hasRecipe = rec.kind === 'item' && row && row[4] && row[4].length;
+    dlg.innerHTML = '<div class="gdlg-head"><b>' + esc(rec.name) + '</b><span class="mu">' + (rec.level ? 'Lvl ' + rec.level : '') + '</span><span class="gsp"></span>'
+      + '<button class="btn g-edit" type="button" data-id="' + id + '">Edit prices</button><button class="btn g-close" type="button">Close</button></div>'
+      + '<div class="gstats"><div>Sell price<b>' + (rec.price ? F(rec.price) : '–') + '</b></div><div>Craft cost<b>' + (ev.cost !== null ? F(ev.cost) : '–') + '</b></div>'
+      + '<div>Profit<b class="' + (ev.craft !== null && ev.craft < 0 ? 'bad' : 'ok') + '">' + money(ev.craft, true) + '</b></div></div>'
+      + (hasRecipe ? graphSvg(rec) : '<p class="mu">' + (rec.kind === 'item' ? 'No recipe in the game data for this item.' : 'This is an ingredient: it has no recipe. Open an item that uses it to see where it goes.') + '</p>');
+    if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute('open', '');
+  }
+
+  function slotHtml(rec, ev, maxAbs) {
+    const w = ev.craft === null ? 0 : Math.max(8, Math.round(Math.abs(ev.craft) / maxAbs * 100));
+    return '<button type="button" class="slot st-' + ev.status + '" data-id="' + rec.id + '" title="' + esc(rec.name) + '">'
+      + (rec.level ? '<em>' + rec.level + '</em>' : '')
+      + (rec.icon ? '<img class="icon" alt="" src="' + esc(rec.icon) + '">' : '<span class="icon">' + esc(initials(rec.name)) + '</span>')
+      + '<span class="sn">' + esc(short(rec.name, 22)) + '</span><span class="sp">' + (rec.price ? F(rec.price) + ' K' : 'no price') + '</span>'
+      + '<span class="pb"><i style="width:' + w + '%"></i></span></button>';
+  }
+  function heroHtml(rows) {
+    const best = rows.filter((r) => r.rec.kind === 'item' && r.ev.craft !== null && r.ev.craft > 0).sort((a, b) => b.ev.craft - a.ev.craft)[0];
+    const waiting = rows.filter((r) => r.ev.craft === null && r.rec.kind === 'item').length;
+    if (!best) return '<div class="hero-empty"><b>No craft worth doing yet</b><span class="mu">Scan your ingredient prices: the best craft shows here as soon as all of its ingredients have a price.</span></div>';
+    const r = best.rec;
+    return '<button type="button" class="hero-card" data-id="' + r.id + '">' + (r.icon ? '<img class="icon big-icon" alt="" src="' + esc(r.icon) + '">' : '<span class="icon big-icon">' + esc(initials(r.name)) + '</span>')
+      + '<span class="hero-txt"><small>Best craft right now</small><b class="hero-name">' + esc(r.name) + '</b><span class="hero-num">' + money(best.ev.craft, true) + '</span>'
+      + '<small>sells ' + (r.price ? F(r.price) : '–') + ' · costs ' + (best.ev.cost !== null ? F(best.ev.cost) : '–') + (waiting ? ' · ' + waiting + ' crafts still missing a price' : '') + '</small></span></button>';
+  }
+
+  function syncView() {
+    document.querySelectorAll('#items-view button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
+    $('items-list').classList.toggle('slots-grid', view === 'slots');
   }
 
   const ORDER = { go: 0, neutral: 1, loss: 2, unknown: 3 };
@@ -170,8 +245,12 @@ export function initItems(env) {
     rows = rows.filter((r) => catOk(r) && (st === 'all' || r.ev.status === st) && (!q || env.normName(r.rec.name).includes(q)));
     rows.sort((a, b) => sort === 'name' ? a.rec.name.localeCompare(b.rec.name) : sort === 'old' ? (a.rec.priceAt || 0) - (b.rec.priceAt || 0)
       : (ORDER[a.ev.status] - ORDER[b.ev.status]) || ((b.ev.craft ?? -Infinity) - (a.ev.craft ?? -Infinity)) || a.rec.name.localeCompare(b.rec.name));
+    const heroRows = Object.values(items).map((rec) => ({ rec, ev: evaluate(rec, c) }));
+    if ($('items-hero')) $('items-hero').innerHTML = heroHtml(heroRows);
+    syncView();
     const total = rows.length; rows = rows.slice(0, shown);
-    root.innerHTML = rows.length ? rows.map((r) => rowHtml(r.rec, r.ev)).join('') + (total > rows.length ? '<button class="btn f-more" type="button">Show more (' + (total - rows.length) + ' left)</button>' : '') : '<p class="mu">Nothing here yet. Type an item name above and press Enter: its ingredients are added for you.</p>';
+    const maxAbs = Math.max(1, ...rows.map((r) => Math.abs(r.ev.craft || 0)));
+    root.innerHTML = rows.length ? rows.map((r) => (view === 'slots' ? slotHtml(r.rec, r.ev, maxAbs) : rowHtml(r.rec, r.ev, maxAbs))).join('') + (total > rows.length ? '<button class="btn f-more" type="button">Show more (' + (total - rows.length) + ' left)</button>' : '') : '<p class="mu">Nothing here yet. Type an item name above and press Enter: its ingredients are added for you.</p>';
   }
 
   function toIcon(file) {
@@ -212,6 +291,8 @@ export function initItems(env) {
   }
 
   $('items-list').addEventListener('click', (e) => {
+    const sl = e.target.closest('.slot'); if (sl) { openGraph(Number(sl.dataset.id)); return; }
+    const gb = e.target.closest('.f-graph'); if (gb) { openGraph(Number(gb.closest('.irow').dataset.id)); return; }
     if (e.target.closest('.f-more')) { shown += 80; render(); return; }
     const card = e.target.closest('.irow'); if (!card) return;
     const id = Number(card.dataset.id), t = e.target;
@@ -255,6 +336,19 @@ export function initItems(env) {
 
   $('items-add').addEventListener('input', () => env.fillList('items-add', 'items-dl'));
   $('items-add').addEventListener('keydown', (e) => { if (e.key === 'Enter') { add($('items-add').value); $('items-add').value = ''; } });
+  $('items-hero').addEventListener('click', (e) => { const h = e.target.closest('.hero-card'); if (h) openGraph(Number(h.dataset.id)); });
+  $('items-view').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    view = b.dataset.v; try { localStorage.setItem('kl-items-view', view); } catch { /* ignore */ }
+    render();
+  });
+  $('graph-dlg').addEventListener('click', (e) => {
+    const dlg = $('graph-dlg');
+    if (e.target === dlg || e.target.closest('.g-close')) { dlg.close ? dlg.close() : dlg.removeAttribute('open'); return; }
+    const ed = e.target.closest('.g-edit');
+    if (ed) { const id = Number(ed.dataset.id); view = 'list'; open.add(id); dlg.close ? dlg.close() : dlg.removeAttribute('open'); render(); const el = document.querySelector('.irow[data-id="' + id + '"]'); if (el) el.scrollIntoView({ block: 'center' }); return; }
+    const gn = e.target.closest('.gn'); if (gn && Number(gn.dataset.id) && recOf(Number(gn.dataset.id))) openGraph(Number(gn.dataset.id));
+  });
   $('items-add-btn').addEventListener('click', () => { add($('items-add').value); $('items-add').value = ''; });
   ['items-kind', 'items-filter', 'items-sort'].forEach((id) => $(id).addEventListener('change', () => { shown = 80; render(); }));
   let searchT = null; $('items-search').addEventListener('input', () => { clearTimeout(searchT); searchT = setTimeout(() => { shown = 80; render(); }, 150); });

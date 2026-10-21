@@ -1,5 +1,6 @@
 import './style.css';
 import JSZip from 'jszip';
+import { initTheme } from './theme.js';
 import { initItems } from './items-ui.js';
 import { parseLots } from './items.js';
 import { parseBudget, parseMarketChart, parsePopup, snapItem } from './market.js';
@@ -1258,6 +1259,7 @@ $('bi').addEventListener('change', fillBrisage);
 [['Vitalité', 216, 0.2, 1, ''], ['Force', 49, 1, 1, ''], ['Intelligence', 48, 1, 1, ''], ['Agilité', 48, 1, 1, ''], ['Sagesse', 26, 3, 3, ''], ['Dommages Feu', 10, 20, 20, ''], ['Prospection', 7, 3, 3, '']].forEach(addB);
 
 var itemsUi = null;
+initTheme();
 itemsUi = initItems({
   $: $, F: F, num: num, esc: esc, normName: normName, pickItem: pickItem,
   getDB: function () { return DB; }, getP: function () { return P; }, metaGet: metaGet, metaPut: metaPut,
