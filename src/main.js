@@ -305,7 +305,6 @@ function calcB() {
 
 var Q = [], region = null, auto = false, stream = null, lastSmall = null, x0 = 0, y0 = 0, dragging = false;
 var captureSources = [], captureSourceType = 'screen', captureSelection = null, capturePickerResolve = null, pendingCaptureSource = null, activeCaptureSource = null;
-var interactionEnabled = false;
 var unclassifiedCaptures = [];
 function renderCaptureSources() {
   var list = $('capture-sources');
@@ -382,8 +381,6 @@ function showCaptureStream(s) {
   $('vid').play();
   $('vw').style.display = 'block';
   $('stop-share').hidden = false;
-  $('game-interaction').disabled = !window.kamaDesktopCapture || !activeCaptureSource || activeCaptureSource.type !== 'window';
-  $('interaction-status').hidden = $('game-interaction').disabled;
   var sourceName = pendingCaptureSource ? pendingCaptureSource.name : 'shared screen or window';
   $('capture-status').textContent = 'Sharing ' + sourceName + '.';
   if (pendingCaptureSource) {
@@ -401,10 +398,6 @@ function updateCaptureControls() {
   $('global-auto-toggle').textContent = 'Auto capture ' + (auto ? 'on' : 'off');
   $('global-auto-toggle').disabled = !stream;
   $('live-dot').hidden = !($('live-scan').checked && stream);
-  $('game-interaction').textContent = 'Game input: ' + (interactionEnabled ? 'on' : 'off');
-  $('game-interaction').setAttribute('aria-pressed', String(interactionEnabled));
-  $('game-interaction').classList.toggle('game-input-on', interactionEnabled);
-  $('game-interaction').disabled = !stream || !window.kamaDesktopCapture || !activeCaptureSource || activeCaptureSource.type !== 'window';
 }
 function endCapture(stopTracks) {
   var activeStream = stream;
@@ -413,32 +406,18 @@ function endCapture(stopTracks) {
   activeCaptureSource = null;
   auto = false;
   lastSmall = null;
-  interactionEnabled = false;
-  if (window.kamaDesktopCapture) window.kamaDesktopCapture.setInteractionEnabled(false);
   if (stopTracks && activeStream) activeStream.getTracks().forEach(function (track) { track.stop(); });
   $('vid').srcObject = null;
   $('vw').style.display = 'none';
   $('stop-share').hidden = true;
   $('autobtn').textContent = 'Auto capture: off';
   $('capture-status').textContent = 'Screen sharing stopped.';
-  $('interaction-status').hidden = true;
   updateCaptureControls();
 }
 function stopShare() {
   if (!stream) return;
   recordAction('stop-share');
   endCapture(true);
-}
-async function toggleGameInteraction() {
-  if (!window.kamaDesktopCapture || !stream || !activeCaptureSource || activeCaptureSource.type !== 'window') return;
-  var requestedState = !interactionEnabled;
-  var result = await window.kamaDesktopCapture.setInteractionEnabled(requestedState);
-  interactionEnabled = !!(result && result.enabled);
-  updateCaptureControls();
-  $('interaction-status').textContent = interactionEnabled
-    ? 'Manual input is on: click the game preview or press a single key while Kama Ledger is focused. Turn Game input off to stop forwarding.'
-    : (result && result.reason) || 'Manual input is off.';
-  if (interactionEnabled) $('vid').focus();
 }
 function toggleShare() {
   if (stream) {
@@ -468,30 +447,6 @@ function shareScreen() {
     })
     .then(function (s) { if (s) showCaptureStream(s); })
     .catch(function (e) { alert('Could not share the window: ' + e.message); });
-}
-$('game-interaction').addEventListener('click', toggleGameInteraction);
-$('vid').addEventListener('click', function (event) {
-  if (!interactionEnabled || !stream || !window.kamaDesktopCapture) return;
-  var bounds = this.getBoundingClientRect();
-  var point = { x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height };
-  window.kamaDesktopCapture.sendClick(point).then(function (result) {
-    if (result && !result.ok) $('interaction-status').textContent = result.reason;
-  }).catch(showInputError);
-});
-document.addEventListener('keydown', function (event) {
-  if (!interactionEnabled || !stream || !window.kamaDesktopCapture || $('capture-picker').hidden === false) return;
-  var target = event.target;
-  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
-  if (['Enter', 'Space', 'Tab', 'Backspace', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].indexOf(event.key) !== -1 || /^[a-z0-9]$/i.test(event.key)) {
-    event.preventDefault();
-    window.kamaDesktopCapture.sendKey(event.key).then(showInputResult).catch(showInputError);
-  }
-});
-function showInputResult(result) {
-  if (result && !result.ok) $('interaction-status').textContent = result.reason;
-}
-function showInputError(error) {
-  $('interaction-status').textContent = 'Input error: ' + error.message;
 }
 var reviewRows = [];
 var reviewSourceIds = null;
@@ -724,11 +679,6 @@ document.addEventListener('keydown', function (event) {
     target.isContentEditable
   ));
   if (event.key === 'Escape' && !isTyping && !event.metaKey && !event.ctrlKey && !event.altKey) {
-    if (interactionEnabled && stream && window.kamaDesktopCapture) {
-      event.preventDefault();
-      window.kamaDesktopCapture.sendKey('Escape').catch(function () {});
-      return;
-    }
     event.preventDefault();
     if (!$('capture-picker').hidden) {
       closeCapturePicker();
@@ -1503,6 +1453,7 @@ async function scanFrame(frame) {
         var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
         window.klLastScan = Object.assign(window.klLastScan || {}, { market: m.rows });
         var res = await itemsUi.applyMarket(rows);
+        try { var obs = itemsUi.observeMarket(rows); if (obs.length && kamoRef) kamoRef.observe(obs, (function () { try { return stream.getVideoTracks()[0].getSettings().displaySurface || ''; } catch (e) { return ''; } })()); } catch (e) { /* remarks are optional */ }
         return ('Market ' + rows.length + ' rows: ' + res.staged + ' waiting for approval' + (res.auto ? ', ' + res.auto + ' registered' : '') + (res.review ? ' (' + res.review + ' need a look)' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
       } else if (k === 'popup') {
         var pl = await scan.readText(frame, prof.popup, 'white');
@@ -1687,6 +1638,8 @@ kamoRef = initKamo({
     scan: function () { show('cap'); $('scan-now').click(); },
     show: function () { show('items'); var r = $('items-review'); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
     add: function () { show('items'); $('items-add').focus(); },
+    scanTab: function () { show('cap'); },
     best: function (id) { show('items'); itemsUi.openGraph(id); },
   },
 });
+window.klKamo = kamoRef;

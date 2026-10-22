@@ -207,7 +207,7 @@ async function readRows(frame, box, cols, anchors, typeNames) {
     let lv = cleanInt(lvls[i].lines.join(''));
     if (!lv || lv > 200) { const d = await recognize(whiteText(frame, r.at(cols.levelX0, cols.levelX1), 4), { psm: 7, whitelist: '0123456789' }); lv = cleanInt(d.text); }
     const { name, type } = splitNameType(lines, typeNames);
-    rows.push({ rawName: name, nameConf: Math.round(nm.conf || 0), type, level: lv && lv <= 200 ? lv : (r.a.level || null), price, priceSure: sure, priceReads: reads, glyphs: glyphs[i], icon: icon(frame, squareLeft(box, cols, r.y0, r.h)) });
+    rows.push({ rawName: name, nameConf: Math.round(nm.conf || 0), type, level: lv && lv <= 200 ? lv : (r.a.level || null), price, priceSure: sure, priceReads: reads, glyphs: glyphs[i], cy: box.y + r.y0 + r.h / 2, cx: box.x + box.w * 0.55, fw: frame.width, fh: frame.height, icon: icon(frame, squareLeft(box, cols, r.y0, r.h)) });
   }
   return { rows, ms: Math.round(performance.now() - t0) };
 }

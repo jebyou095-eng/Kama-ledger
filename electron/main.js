@@ -1,5 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, session } from 'electron';
-import { execFile } from 'node:child_process';
+import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, screen, session } from 'electron';
 import { appendFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,11 +7,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const appRoot = join(__dirname, '..');
 let selectedCaptureSourceId = null;
-let selectedInteractiveSourceId = null;
-let interactionEnabled = false;
 let activeShareOwner = null;
 let isScreenSharing = false;
 let mainWindow = null;
+let overlayWindow = null;
+let sharedSourceId = null;
 
 // A small log next to the app data, so a window that does not appear can be diagnosed.
 // Windows: %APPDATA%\Kama Ledger\kama-ledger.log
@@ -97,14 +96,6 @@ ipcMain.handle('hotkey:set', (_event, accelerator) => {
   return { ok: true, accelerator };
 });
 
-function requireSelectedWindow(sourceId) {
-  if (typeof sourceId !== 'string' || !sourceId.startsWith('window:')) return false;
-  const nativeHandle = sourceId.split(':')[1];
-  if (!/^\d+$/.test(nativeHandle || '') || BigInt(nativeHandle) === 0n) return false;
-  selectedInteractiveSourceId = sourceId;
-  return true;
-}
-
 ipcMain.handle('capture:list-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
@@ -123,9 +114,7 @@ ipcMain.handle('capture:list-sources', async () => {
 ipcMain.handle('capture:select-source', (_event, sourceId, sourceName) => {
   if (typeof sourceId !== 'string') return false;
   selectedCaptureSourceId = sourceId;
-  interactionEnabled = false;
-  selectedInteractiveSourceId = null;
-  requireSelectedWindow(sourceId);
+  sharedSourceId = sourceId;
   return true;
 });
 
@@ -135,109 +124,45 @@ ipcMain.handle('capture:set-sharing', (_event, sharing) => {
   return isScreenSharing;
 });
 
-ipcMain.handle('interaction:set-enabled', (_event, enabled) => {
-  if (enabled !== true) {
-    interactionEnabled = false;
-    return { enabled: false, reason: null };
-  }
-  if (!selectedInteractiveSourceId) {
-    interactionEnabled = false;
-    return { enabled: false, reason: 'Choose a specific window, not Entire screen.' };
-  }
-  return resolveSelectedWindow().then((result) => {
-    interactionEnabled = result.ok;
-    return { enabled: result.ok, reason: result.ok ? null : result.reason };
-  });
-});
 
-function runPowerShell(script, values) {
-  const encodedValues = values.map((value) => Buffer.from(String(value), 'utf8').toString('base64'));
-  const argumentSetup = `$__kamaArgs = @('${encodedValues.join("','")}') | ForEach-Object { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }`;
-  const encodedScript = Buffer.from(`${argumentSetup}\n${script}`, 'utf16le').toString('base64');
-  return new Promise((resolve) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encodedScript], { windowsHide: true }, (error) => resolve(!error));
-  });
+// ---- Kamo overlay: a see-through window above the screen that only shows Kamo's bubble and a pointer.
+// It never takes keyboard focus and sends no input to any other program, the game included.
+async function overlayDisplay() {
+  try {
+    if (sharedSourceId && sharedSourceId.startsWith('screen:')) {
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+      const src = sources.find((x) => x.id === sharedSourceId);
+      const d = src && screen.getAllDisplays().find((x) => String(x.id) === String(src.display_id));
+      if (d) return d;
+    }
+  } catch { /* fall back to the main display */ }
+  return screen.getPrimaryDisplay();
 }
-
-const windowLookup = String.raw`
-Add-Type @'
-using System;
-using System.Text;
-using System.Runtime.InteropServices;
-public static class KamaWindow {
-  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
-  [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
-  public static IntPtr Find(string title) {
-    IntPtr found = IntPtr.Zero;
-    EnumWindows((hWnd, lp) => {
-      if (!IsWindowVisible(hWnd)) return true;
-      var text = new StringBuilder(512); GetWindowText(hWnd, text, text.Capacity);
-      if (String.Equals(text.ToString(), title, StringComparison.OrdinalIgnoreCase)) { found = hWnd; return false; }
-      return true;
-    }, IntPtr.Zero);
-    return found;
+async function showOverlay(on) {
+  if (!on) { if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide(); return false; }
+  const d = await overlayDisplay();
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayWindow = new BrowserWindow({
+      x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height,
+      transparent: true, frame: false, resizable: false, movable: false, focusable: false, skipTaskbar: true, hasShadow: false, show: false, alwaysOnTop: true,
+      webPreferences: { preload: join(__dirname, 'overlay-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+    });
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+    overlayWindow.setMenuBarVisibility(false);
+    overlayWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    overlayWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+    await overlayWindow.loadFile(join(appRoot, 'dist', 'overlay.html'));
+  } else {
+    overlayWindow.setBounds(d.bounds);
   }
-}`;
-
-async function resolveSelectedWindow() {
-  const script = `${windowLookup}
-$target = [IntPtr]([long]$__kamaArgs[0])
-if ($target -eq [IntPtr]::Zero) { exit 2 }
-$client = New-Object KamaWindow+RECT
-if (-not [KamaWindow]::GetClientRect($target, [ref]$client) -or $client.Right -le 0 -or $client.Bottom -le 0) { exit 3 }`;
-  const ok = await runPowerShell(script, [selectedInteractiveSourceId.split(':')[1]]);
-  return { ok, reason: ok ? null : 'Could not access the selected window handle.' };
+  overlayWindow.showInactive();
+  return true;
 }
-
-ipcMain.handle('interaction:click', async (_event, point) => {
-  if (!interactionEnabled || !selectedInteractiveSourceId) return { ok: false, reason: 'Game input is off.' };
-  const x = Number(point && point.x), y = Number(point && point.y);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 1 || y > 1) return { ok: false, reason: 'Click position is outside the preview.' };
-
-  const script = `${windowLookup}
-$target = [IntPtr]([long]$__kamaArgs[0])
-if ($target -eq [IntPtr]::Zero) { exit 2 }
-$client = New-Object KamaWindow+RECT
-if (-not [KamaWindow]::GetClientRect($target, [ref]$client)) { exit 4 }
-$origin = [KamaWindow+POINT]::new()
-[KamaWindow]::ClientToScreen($target, [ref]$origin) | Out-Null
-$px = [int]($origin.X + [double]$__kamaArgs[1] * $client.Right)
-$py = [int]($origin.Y + [double]$__kamaArgs[2] * $client.Bottom)
-if ($client.Right -le 0 -or $client.Bottom -le 0) { exit 3 }
-[KamaWindow]::SetForegroundWindow($target) | Out-Null
-[KamaWindow]::SetCursorPos($px, $py) | Out-Null
-[KamaWindow]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
-[KamaWindow]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)`;
-  const ok = await runPowerShell(script, [selectedInteractiveSourceId.split(':')[1], x, y]);
-  return { ok, reason: ok ? null : 'Windows could not deliver the click to the selected window.' };
-});
-
-ipcMain.handle('interaction:key', async (_event, key) => {
-  if (!interactionEnabled || !selectedInteractiveSourceId || typeof key !== 'string') return { ok: false, reason: 'Game input is off.' };
-  const virtualKeys = { Enter: 0x0d, Escape: 0x1b, Space: 0x20, Tab: 0x09, Backspace: 0x08, ArrowLeft: 0x25, ArrowUp: 0x26, ArrowRight: 0x27, ArrowDown: 0x28 };
-  const virtualKey = virtualKeys[key] || (key.length === 1 && /^[a-z0-9]$/i.test(key) ? key.toUpperCase().charCodeAt(0) : null);
-  if (!virtualKey) return { ok: false, reason: 'That key is not supported for forwarding.' };
-  const script = `${windowLookup}
-$target = [IntPtr]([long]$__kamaArgs[0])
-if ($target -eq [IntPtr]::Zero) { exit 2 }
-$vk = [byte]$__kamaArgs[1]
-[KamaWindow]::SetForegroundWindow($target) | Out-Null
-[KamaWindow]::keybd_event($vk, 0, 0, [UIntPtr]::Zero)
-[KamaWindow]::keybd_event($vk, 0, 2, [UIntPtr]::Zero)`;
-  const ok = await runPowerShell(script, [selectedInteractiveSourceId.split(':')[1], virtualKey]);
-  return { ok, reason: ok ? null : 'Windows could not deliver the key to the selected window.' };
-});
+ipcMain.handle('overlay:show', (_e, on) => showOverlay(on === true));
+ipcMain.on('overlay:state', (_e, state) => { if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.send('overlay:state', state); });
+ipcMain.on('overlay:event', (_e, payload) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('overlay:event', payload); });
+ipcMain.on('overlay:interactive', (_e, on) => { if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.setIgnoreMouseEvents(on !== true, { forward: true }); });
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -315,6 +240,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
   globalShortcut.unregisterAll();
 });
 

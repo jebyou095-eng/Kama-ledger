@@ -18,7 +18,9 @@
         </div>
         <span id="live-dot" class="live-dot" hidden>live scan</span>
         <div class="desktop-capture-controls" aria-label="Screen capture controls">
-          <label class="theme-pick">Kamo <select id="kamo-voice"><option value="merchant">Cheerful merchant</option><option value="sassy">Sassy sidekick</option><option value="sage">Calm trader</option></select></label>
+          <details class="kamo-menu"><summary>Kamo</summary><div class="kamo-panel"><label class="theme-pick kamo-tog" title="Kamo clicks buttons and types in this app for you. He never touches the game."><input type="checkbox" id="kamo-hands"> Kamo's hands</label>
+          <label class="theme-pick kamo-tog" title="Kamo floats over your screen to point things out and give advice. He only watches and talks; he never clicks or types in the game."><input type="checkbox" id="kamo-outside"> Kamo outside the app</label>
+          <label class="theme-pick">Voice <select id="kamo-voice"><option value="merchant">Cheerful merchant</option><option value="sassy">Sassy sidekick</option><option value="sage">Calm trader</option></select></label></div></details>
           <label class="theme-pick">Theme <select id="theme-sel"><option value="navy">Night navy</option><option value="game">Game brown</option><option value="light">Bright lime</option></select></label>
           <button class="btn" id="global-share-toggle" type="button" onclick="toggleShare()">Start screen share</button>
           <button class="btn" id="global-auto-toggle" type="button" onclick="toggleAuto()" disabled>Auto capture off</button>
@@ -74,7 +76,6 @@
           <label class="chk"><input type="checkbox" id="beep" checked> beep on capture</label>
           <span id="hotkey-status" class="mu" aria-live="polite"></span>
         </div>
-        <p id="interaction-status" class="interaction-status" hidden>Manual input only: clicks on this preview and key presses while Kama Ledger is focused are sent to the selected game window.</p>
         <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="pboxes" style="position:absolute;inset:0;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
         </div>
         <div id="capture-picker" class="capture-picker" hidden>
@@ -124,7 +125,7 @@
           <span class="mu">Esc to capture</span>
           <label class="btn">Add images…<input type="file" id="fi" accept="image/*" multiple hidden></label>
         </div>
-          <div class="row"><button class="btn" id="game-interaction" type="button" aria-pressed="false" disabled>Game input: off</button></div>
+          <div class="row"></div>
         <p class="mu">Queue: <b id="qn">0</b> capture(s)</p>
         <div id="q" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         <div class="row"><button class="btn" onclick="readAll()">Read all (OCR)</button><button class="btn" onclick="clearQ()">Clear queue</button><span id="ocrst" class="mu"></span></div>

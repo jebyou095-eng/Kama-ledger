@@ -43,3 +43,11 @@ Nothing the scan reads is written to your lists before you accept it (unless you
 ## For developers
 
 See `docs/ARCHITECTURE.md`. `npm test` runs all tests, `npm run build` builds, `npm run start` runs the desktop app from source.
+
+## Kamo, the helper
+
+Kamo is the small gold coin in the corner. He shows what the app is doing, answers questions about your own prices ("what should I craft?", "price of …", "recipe of …", "what is old"), and learns simple habits on this computer (for example that you always accept clean batches). Pick his voice in the **Kamo** menu at the top.
+
+- **Kamo's hands** (off by default): he can click buttons and type in *this app* for you ("go to scan", "add Bonnet Vicieux", "accept the clean ones"). With it off he only points. He never clicks Remove, Refuse or Import.
+- **Kamo outside the app** (off by default): a see-through window above your screen where he comments on what the last scan saw (for example "X is 22% cheaper than your last price") and points at it. Pointing needs the whole screen to be shared, not a single window, and the game in windowed or borderless mode. He only watches and talks.
+- **The game is never touched.** The app sends no clicks or key presses to the game, and does not read its memory or network traffic. The old "Game input" feature was removed.

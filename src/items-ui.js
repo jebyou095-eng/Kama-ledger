@@ -491,6 +491,19 @@ export function initItems(env) {
     return { id: rec.id, name: rec.name, kind: rec.kind, price: rec.price || null, days: priceAgeDays(rec.priceAt), cost: ev.cost, profit: ev.craft, recipe };
   }
   const setAutoAccept = (v) => { autoAccept = !!v; try { localStorage.setItem('kl-autoaccept', autoAccept ? '1' : '0'); } catch { /* ignore */ } renderReview(); };
+
+  // Remarks about a market list that was just read, compared with the prices already in the list. Nothing is changed.
+  function observeMarket(rows) {
+    const out = [], best = topCrafts(1)[0], c = ctx(), need = new Set(best && c.byId[best.id] && c.byId[best.id][4] ? c.byId[best.id][4].map((g) => g[0]) : []);
+    for (const r of rows) {
+      if (!r.a || !r.price) continue;
+      const known = items[r.a[0]] || ingredients[r.a[0]]; if (!known || !known.price) continue;
+      const ch = (r.price - known.price) / known.price, pct = Math.round(Math.abs(ch) * 100);
+      if (ch <= -0.12) out.push({ kind: 'cheap', mood: 'happy', cx: r.cx, cy: r.cy, fw: r.fw, fh: r.fh, text: r.a[1] + ' is ' + pct + '% cheaper than your last price (' + F(r.price) + ' instead of ' + F(known.price) + ').' + (need.has(r.a[0]) ? ' You need it for your best craft!' : '') });
+      else if (ch >= 0.2) out.push({ kind: 'up', mood: 'think', cx: r.cx, cy: r.cy, fw: r.fw, fh: r.fh, text: r.a[1] + ' went up ' + pct + '% (' + F(r.price) + ' instead of ' + F(known.price) + '). Maybe wait.' });
+    }
+    return out.sort((a, b) => (a.kind === 'cheap' ? 0 : 1) - (b.kind === 'cheap' ? 0 : 1)).slice(0, 3);
+  }
   async function applyMarket(rows) {
     const res = { staged: 0, auto: 0, review: 0, skipped: 0, ignored: 0 };
     for (let r of rows) {
@@ -634,7 +647,7 @@ export function initItems(env) {
     renderReview(); renderBudget(); renderScanLog();
   }
 
-  return { summary, acceptClean, topCrafts, oldestPrices, lookup, setAutoAccept, isAutoAccept: () => autoAccept,
+  return { summary, acceptClean, observeMarket, topCrafts, oldestPrices, lookup, setAutoAccept, isAutoAccept: () => autoAccept,
     nameOf: (id) => { const r = items[id] || ingredients[id]; return r ? r.name : ''; },
     ignore: (id) => { ignored.add(id); saveIgnored(); }, budgetValue: () => (budget ? budget.value : null), openGraph, stagePopup, fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }

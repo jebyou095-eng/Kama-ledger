@@ -612,3 +612,28 @@ html[data-theme="light"] .kamo-bubble::before { display: none; }
 .kb-q:focus { outline: 3px solid #ffc83d88 !important; }
 .kb-go { border: 0; border-radius: 999px; padding: 5px 12px; background: #3a2418; color: #ffd04a; font: 800 12px "Segoe UI", sans-serif; cursor: pointer; }
 .kamo-bubble { max-width: 360px; }
+
+/* ===== Kamo's hands, pointing ring and toggles ===== */
+.kamo-tog { cursor: pointer; user-select: none; }
+.kamo-tog input { width: auto; accent-color: var(--ac); }
+.kamo-hand { position: fixed; z-index: 80; width: 44px; height: 44px; margin: -6px 0 0 -10px; pointer-events: none; transition: transform .8s cubic-bezier(.4, 0, .2, 1), opacity .3s; filter: drop-shadow(0 4px 4px #0006); }
+.kamo-hand.tap { animation: tap .22s ease-in-out; }
+.kamo-hand.gone { opacity: 0; }
+@keyframes tap { 50% { scale: .82; } }
+.kring { position: fixed; z-index: 75; border: 3px solid #ffc83d; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 4px #ffc83d44, 0 0 24px #ffc83daa; animation: ring 1s ease-in-out infinite; }
+@keyframes ring { 50% { box-shadow: 0 0 0 10px #ffc83d00, 0 0 30px #ffc83d00; } }
+/* the see-through overlay page */
+body.overlay { background: transparent !important; overflow: hidden; min-height: 100vh; }
+body.overlay main { display: none; }
+.kamo.ov { left: 18px; bottom: 18px; }
+.ov .kamo-bubble[hidden] { display: none; }
+.ov-ring { position: fixed; width: 96px; height: 96px; margin: -48px 0 0 -48px; border: 5px solid #ffc83d; border-radius: 50%; display: grid; place-items: center; color: #3a2418; font: 900 13px "Segoe UI", sans-serif; box-shadow: 0 0 0 6px #ffc83d55, 0 0 30px #ffc83d; animation: ovring 1s ease-in-out infinite; pointer-events: none; }
+.ov-ring[hidden] { display: none; }
+@keyframes ovring { 50% { transform: scale(1.18); opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .kamo-hand, .kring, .ov-ring { animation: none !important; transition: none !important; } }
+.kamo-menu { position: relative; }
+.kamo-menu summary { list-style: none; cursor: pointer; padding: 6px 14px; border-radius: 999px; background: var(--ac-soft); color: var(--tx); font-weight: 700; }
+.kamo-menu summary::-webkit-details-marker { display: none; }
+.kamo-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 270px; display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--bd); box-shadow: 0 16px 40px #0007; }
+.kamo-panel .theme-pick { color: var(--tx); justify-content: space-between; }
+.kamo-panel .theme-pick select { width: 150px; }

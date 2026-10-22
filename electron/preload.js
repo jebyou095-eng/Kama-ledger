@@ -3,9 +3,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('kamaDesktopCapture', {
   listSources: () => ipcRenderer.invoke('capture:list-sources'),
   selectSource: (sourceId, sourceName) => ipcRenderer.invoke('capture:select-source', sourceId, sourceName),
-  setInteractionEnabled: (enabled) => ipcRenderer.invoke('interaction:set-enabled', enabled),
-  sendClick: (point) => ipcRenderer.invoke('interaction:click', point),
-  sendKey: (key) => ipcRenderer.invoke('interaction:key', key),
+  overlayShow: (on) => ipcRenderer.invoke('overlay:show', on === true),
+  overlaySend: (state) => ipcRenderer.send('overlay:state', state),
+  onOverlay: (callback) => {
+    ipcRenderer.removeAllListeners('overlay:event');
+    ipcRenderer.on('overlay:event', (_e, payload) => callback(payload));
+  },
   setSharing: (sharing) => ipcRenderer.invoke('capture:set-sharing', sharing),
   gameJson: (url) => ipcRenderer.invoke('gamedata:json', url),
   gameImage: (url) => ipcRenderer.invoke('gamedata:image', url),

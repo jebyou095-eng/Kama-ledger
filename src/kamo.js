@@ -1,6 +1,6 @@
 // Kamo: the market helper. A small animated coin character that shows what the app is doing and offers the next useful action.
 // He only reads app state and calls actions the user could click anyway; he never changes anything by himself.
-const SVG = `
+export const SVG = `
 <svg class="kamo-svg" viewBox="-80 -98 160 200" aria-hidden="true">
   <ellipse class="k-shadow" cx="0" cy="94" rx="44" ry="7"/>
   <g class="k-legs"><path d="M-22 78v14M22 78v14" /></g>
@@ -104,6 +104,55 @@ export function initKamo(o) {
   const T = (key, vars) => fillTpl(V[key][vi()], vars);
   const sel = $('kamo-voice'); if (sel) { sel.value = voice; }
 
+  // ---- hands: Kamo can click and type inside THIS app (never in the game). Off = he only points. ----
+  let hands = store('kl-kamo-hands') === '1', outside = store('kl-kamo-outside') === '1', curActs = [], lastPayload = null;
+  const hx = $('kamo-hands'), ox = $('kamo-outside');
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const SAFE = '#nav button,#items-add,#items-add-btn,.pn-accept,#scan-now,#global-share-toggle,.irow-main,.slot,#items-view button,.hero-card';
+  const BLOCK = '.f-del,.pn-refuse,.f-imgdel,.f-rdel,.f-rreset,#items-export';   // nothing destructive is ever touched
+  const touchable = (el) => !!(el && el.closest && el.closest(SAFE) && !el.closest(BLOCK));
+  const HAND = '<svg viewBox="0 0 48 48" width="44" height="44"><path d="M14 22V9a3 3 0 0 1 6 0v13l3-1.5a3 3 0 0 1 3 0l1 .5 2-.8a3 3 0 0 1 3 0l1 .6 1.5-.4a3 3 0 0 1 3.5 3V34c0 6-5 11-11 11h-4c-4 0-7-2-9-5L6 31a3 3 0 0 1 4.5-4L14 30z" fill="#fff" stroke="#3a2418" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+  async function touch(el, opts) {
+    opts = opts || {};
+    if (!touchable(el)) return false;
+    el.scrollIntoView({ block: 'center', behavior: reduce() ? 'auto' : 'smooth' });
+    if (!reduce()) await sleep(380);
+    const r = el.getBoundingClientRect(), kb = root.querySelector('.kamo-btn').getBoundingClientRect();
+    const hand = document.createElement('div'); hand.className = 'kamo-hand'; hand.innerHTML = HAND;
+    hand.style.left = (kb.left + kb.width * 0.7) + 'px'; hand.style.top = (kb.top + kb.height * 0.4) + 'px';
+    const ring = document.createElement('div'); ring.className = 'kring';
+    ring.style.left = (r.left - 6) + 'px'; ring.style.top = (r.top - 6) + 'px'; ring.style.width = (r.width + 12) + 'px'; ring.style.height = (r.height + 12) + 'px';
+    document.body.appendChild(ring); document.body.appendChild(hand);
+    await sleep(30);
+    hand.style.transform = 'translate(' + (r.left + r.width / 2 - kb.left - kb.width * 0.7 - 6) + 'px,' + (r.top + r.height / 2 - kb.top - kb.height * 0.4 - 2) + 'px)';
+    await sleep(reduce() ? 0 : 800);
+    const acted = !!(opts.act && hands);
+    if (acted) {
+      hand.classList.add('tap');
+      await sleep(reduce() ? 0 : 220);
+      if (opts.text !== undefined) { el.focus(); el.value = opts.text; el.dispatchEvent(new Event('input', { bubbles: true })); } else el.click();
+    }
+    setTimeout(() => { hand.classList.add('gone'); }, acted ? 500 : 3200);
+    setTimeout(() => { hand.remove(); ring.remove(); }, acted ? 1100 : 3800);
+    return acted;
+  }
+  if (hx) { hx.checked = hands; hx.addEventListener('change', () => { hands = hx.checked; store('kl-kamo-hands', hands ? '1' : '0'); say(hands ? 'Hands on! Tell me what to do ("go to scan", "add Bonnet Vicieux", "accept the clean ones") and I will do it. Only in this app, never in the game.' : 'Hands off. I will only point at things now.', 'happy', 6000); }); }
+
+  // ---- outside: a small see-through window over the screen. He only talks and points; he never clicks or types in the game. ----
+  const bridge = window.kamaDesktopCapture;
+  function emit(msg, m, acts, point) {
+    if (!outside || !bridge || !bridge.overlaySend) return;
+    lastPayload = { mood: m, msg, acts: acts.map((a) => a.label), voice, point: point || null };
+    bridge.overlaySend(lastPayload);
+  }
+  function applyOutside() {
+    root.hidden = hidden || outside; back.hidden = !hidden || outside;
+    if (bridge && bridge.overlayShow) bridge.overlayShow(outside);
+    if (outside && lastPayload) emit(lastPayload.msg, lastPayload.mood, curActs, null);
+  }
+  if (ox) { ox.checked = outside; ox.disabled = !bridge || !bridge.overlayShow; ox.addEventListener('change', () => { outside = ox.checked; store('kl-kamo-outside', outside ? '1' : '0'); shownKey = ''; applyOutside(); if (outside) setTimeout(() => say('I am outside now. I only watch and talk: I never click or type in the game.', 'happy', 6000), 600); }); }
+  if (bridge && bridge.onOverlay) bridge.onOverlay((e) => { if (!e) return; if (e.type === 'act' && curActs[e.i]) { lastActive = Date.now(); curActs[e.i].run(); } else if (e.type === 'hide') { outside = false; if (ox) ox.checked = false; store('kl-kamo-outside', '0'); applyOutside(); } });
+
   // ---- memory: small counters kept on this computer, nothing else ----
   const mem = Object.assign({ scans: [], manualAll: 0, refusals: {}, dismissed: {} }, readJson('kl-kamo-mem', {}));
   const saveMem = () => store('kl-kamo-mem', JSON.stringify(mem));
@@ -114,15 +163,16 @@ export function initKamo(o) {
 
   let hidden = store('kl-kamo-off') === '1', override = null, shownKey = '', typer = 0, lastActive = Date.now(), tipI = 0, nextIdle = Date.now() + 15000, wasScanning = false;
   const seenTabs = readJson('kl-kamo-tabs', {});
-  function setHidden(v) { hidden = v; store('kl-kamo-off', v ? '1' : '0'); root.hidden = v; back.hidden = !v; }
+  function setHidden(v) { hidden = v; store('kl-kamo-off', v ? '1' : '0'); root.hidden = v || outside; back.hidden = !v || outside; }
   setHidden(hidden);
+  if (outside) setTimeout(applyOutside, 800);
   const mood = (m) => { if (root.dataset.mood !== m) root.dataset.mood = m; };
   function hop() { if (reduce()) return; root.classList.remove('hop'); void root.offsetWidth; root.classList.add('hop'); }
 
   function render(msg, m, acts) {
     const key = msg + '|' + m + '|' + acts.map((a) => a.label).join(',');
     if (key === shownKey) return;
-    shownKey = key; mood(m); clearInterval(typer);
+    shownKey = key; mood(m); clearInterval(typer); curActs = acts; emit(msg, m, acts, null);
     actions.innerHTML = ''; text.textContent = '';
     const addActs = () => acts.forEach((a) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'kb-act'; b.textContent = a.label; b.addEventListener('click', () => { lastActive = Date.now(); a.run(); }); actions.appendChild(b); });
     if (reduce()) { text.textContent = msg; addActs(); return; }
@@ -167,10 +217,37 @@ export function initKamo(o) {
   }
 
   // ---- Ask Kamo: keyword understanding over the user's own data (not a language model) ----
+    const TABS = { items: 'items', scan: 'cap', 'chat log': 'log', chat: 'log', craft: 'craft', recycling: 'rec', recycle: 'rec', brisage: 'bri', 'sell and tax': 'tax', tax: 'tax', history: 'db', 'game data': 'data', data: 'data' };
+  const $q = (sel) => document.querySelector(sel);
+  function command(q, raw) {
+    const go = q.match(/^(?:go to|open|show me|take me to|switch to)\s+(?:the\s+)?(?:tab\s+)?(.+?)(?:\s+tab)?$/);
+    if (go && TABS[go[1].replace(/&/g, 'and')]) {
+      const k = TABS[go[1].replace(/&/g, 'and')];
+      return { msg: hands ? 'On my way!' : 'It is the "' + go[1] + '" tab, up there. Click it!', m: 'happy', acts: [], run: () => touch($q('#b-' + k), { act: true }) };
+    }
+    const add = q.match(/^(?:add|track)\s+(.{3,})$/);
+    if (add && !/^(up|it)$/.test(add[1])) {
+      const name = raw.trim().replace(/^(add|track)\s+/i, '');
+      return { msg: hands ? 'Adding ' + name + '…' : 'Type the name in the Add box, then press Add. I am pointing at it.', m: 'happy', acts: [], run: async () => { o.actions.add(); await sleep(150); const done = await touch($q('#items-add'), { act: true, text: name }); if (done) { await sleep(200); await touch($q('#items-add-btn'), { act: true }); say(name + ' added with its recipe.', 'happy', 4500); } else await touch($q('#items-add-btn'), { act: false }); } };
+    }
+    if (/^(accept|approve|save)\b/.test(q) && /(clean|all|price|them|selected)/.test(q)) {
+      return { msg: hands ? 'Accepting what is ticked…' : 'Press "Accept selected" in the approval window. I am pointing at it.', m: 'happy', acts: [], run: async () => { o.actions.show(); await sleep(500); await touch($q('.pn-accept'), { act: true }); } };
+    }
+    if (/^(scan|read the market|scan now)\b/.test(q)) {
+      return { msg: hands ? 'Scanning!' : 'Press "Scan now". I am pointing at it.', m: 'scan', acts: [], run: async () => { o.actions.scanTab && o.actions.scanTab(); await sleep(400); await touch($q('#scan-now'), { act: true }); } };
+    }
+    if (/^(share|start sharing)\b.*(game|screen|window)?/.test(q) && /(share)/.test(q)) {
+      return { msg: hands ? 'Opening the share window…' : 'Press "Start screen share". I am pointing at it.', m: 'happy', acts: [], run: () => touch($q('#global-share-toggle'), { act: true }) };
+    }
+    const where = q.match(/^where (?:can i|do i|is the|are the)\s+(.+)$/);
+    if (where && /add/.test(where[1])) return { msg: 'Right here!', m: 'happy', acts: [], run: () => touch($q('#items-add'), { act: false }) };
+    return null;
+  }
   const F = (v) => (isFinite(v) ? Math.round(v).toLocaleString('fr-FR') : '-');
   const chip = (label, q) => ({ label, run: () => ask(q) });
   function answer(raw) {
     const q = nrm(raw).trim(); if (!q) return null;
+    const c = command(q, raw); if (c) return c;
     const cm = [chip('Best crafts', 'best crafts'), chip('What is old?', 'what is old'), chip('Budget', 'budget')];
     if (/\b(hi|hello|hey|salut|bonjour|salam)\b/.test(q)) return { msg: T('hi'), m: 'happy', acts: cm };
     if (/(thank|merci|shukran)/.test(q)) return { msg: T('thanks'), m: 'happy', acts: [] };
@@ -204,7 +281,7 @@ export function initKamo(o) {
     if (withRecipe && i.recipe.length) s += '\n' + i.recipe.map((g) => '• ' + g.qty + ' × ' + g.name + (g.price ? ' (' + F(g.price) + ')' : ' (no price)')).join('\n');
     return s;
   }
-  function ask(raw) { const a = answer(raw); if (a) say(a.msg, a.m, 22000, a.acts); }
+  function ask(raw) { const a = answer(raw); if (!a) return; say(a.msg, a.m, a.run ? 7000 : 22000, a.acts); if (a.run) setTimeout(() => { Promise.resolve(a.run()).catch(() => {}); }, 350); }
   root.querySelector('.kb-ask').addEventListener('submit', (e) => { e.preventDefault(); const v = qIn.value; qIn.value = ''; ask(v); });
 
   function tick() {
@@ -242,6 +319,18 @@ export function initKamo(o) {
   setInterval(tick, 700); tick();
   return {
     say, ask,
+    observe(list, surface) {
+      if (!list || !list.length) return;
+      const first = list[0];
+      // pointing needs the whole screen to be shared (a shared window has no known position on screen)
+      const canPoint = outside && surface === 'monitor' && first.fw && first.fh;
+      const point = canPoint ? { fx: first.cx / first.fw, fy: first.cy / first.fh, label: first.kind === 'cheap' ? 'cheap!' : 'pricey' } : null;
+      const more = list.length > 1 ? '\n(+' + (list.length - 1) + ' more: ' + list.slice(1).map((x) => x.text.split(' is ')[0].split(' went ')[0]).join(', ') + ')' : '';
+      say(first.text + more, first.mood, 14000, []);
+      if (point) emit(first.text + more, first.mood, [], point);
+      if (outside && surface && surface !== 'monitor') { /* window share: remarks stay in the bubble, no pointing */ }
+    },
+
     onTab(k) { if (seenTabs[k] || !TAB_TIPS[k]) return; seenTabs[k] = 1; store('kl-kamo-tabs', JSON.stringify(seenTabs)); setTimeout(() => say(TAB_TIPS[k], 'think', 9000), 400); },
   };
 }
