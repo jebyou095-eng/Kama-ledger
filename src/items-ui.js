@@ -466,12 +466,38 @@ export function initItems(env) {
     if (ok) { await persistReview(); render(); renderReview(); }
     return ok;
   }
+
+  // ---- helpers for Kamo (read-only answers about the user's own list) ----
+  let ignored = new Set();
+  try { ignored = new Set(JSON.parse(localStorage.getItem('kl-ignored') || '[]')); } catch { /* storage unavailable */ }
+  const saveIgnored = () => { try { localStorage.setItem('kl-ignored', JSON.stringify([...ignored])); } catch { /* ignore */ } };
+  const everyRec = () => Object.values(items).concat(Object.values(ingredients));
+  function topCrafts(n) {
+    const c = ctx();
+    return Object.values(items).map((rec) => ({ rec, ev: evaluate(rec, c) })).filter((r) => r.ev.craft !== null && r.ev.craft > 0)
+      .sort((a, b) => b.ev.craft - a.ev.craft).slice(0, n).map((r) => ({ id: r.rec.id, name: r.rec.name, profit: r.ev.craft, cost: r.ev.cost, price: r.rec.price }));
+  }
+  function oldestPrices(n) {
+    const all = everyRec(), stale = all.filter((r) => isStale(r.priceAt));
+    return { total: stale.length, list: stale.sort((a, b) => (a.priceAt || 0) - (b.priceAt || 0)).slice(0, n).map((r) => ({ name: r.name, days: priceAgeDays(r.priceAt) })) };
+  }
+  function lookup(q) {
+    const nq = env.normName(q); if (!nq) return null;
+    const all = everyRec();
+    const rec = all.find((r) => env.normName(r.name) === nq) || all.find((r) => env.normName(r.name).includes(nq)) || all.find((r) => nq.includes(env.normName(r.name)));
+    if (!rec) return null;
+    const c = ctx(), ev = evaluate(rec, c), row = c.byId[rec.id], P = env.getP();
+    const recipe = rec.kind === 'item' && row && row[4] ? row[4].map((g) => { const ig = ingredients[g[0]] || items[g[0]]; return { name: P && P.byId[g[0]] ? P.byId[g[0]][1] : (ig ? ig.name : '#' + g[0]), qty: g[1], price: ig && ig.price ? ig.price : null }; }) : [];
+    return { id: rec.id, name: rec.name, kind: rec.kind, price: rec.price || null, days: priceAgeDays(rec.priceAt), cost: ev.cost, profit: ev.craft, recipe };
+  }
+  const setAutoAccept = (v) => { autoAccept = !!v; try { localStorage.setItem('kl-autoaccept', autoAccept ? '1' : '0'); } catch { /* ignore */ } renderReview(); };
   async function applyMarket(rows) {
     const res = { staged: 0, auto: 0, review: 0, skipped: 0, ignored: 0 };
     for (let r of rows) {
       if (!Number.isFinite(r.price) || r.price <= 0) { res.skipped++; continue; }
       r = Object.assign({}, r, { rawName: cleanName(r.rawName) });
       if (!r.a) { res.ignored++; continue; }   // not an item of the game data: unreadable or gibberish, never stored
+      if (ignored.has(r.a[0])) { res.ignored++; continue; }   // the user asked Kamo to ignore this item
       const known = items[r.a[0]] || ingredients[r.a[0]];
       const jump = known && known.price ? r.price / known.price : 1;
       const why = matchVerdict(r.sim, r.nameConf)
@@ -592,8 +618,8 @@ export function initItems(env) {
     const accept = e.target.closest('.pn-accept'), refuse = e.target.closest('.pn-refuse');
     if (!accept && !refuse) return;
     const chosen = review.filter((r) => sel.has(r.id));
-    if (refuse) { review = review.filter((r) => !sel.has(r.id)); sel.clear(); await persistReview(); renderReview(); status(chosen.length + ' price(s) refused.'); return; }
-    if (accept) burst(accept);
+    if (refuse) { try { window.dispatchEvent(new CustomEvent('kl-refused', { detail: chosen.map((r) => r.itemId) })); } catch { /* ignore */ } review = review.filter((r) => !sel.has(r.id)); sel.clear(); await persistReview(); renderReview(); status(chosen.length + ' price(s) refused.'); return; }
+    if (accept) { burst(accept); try { window.dispatchEvent(new CustomEvent('kl-accepted', { detail: { n: chosen.length, allClean: chosen.length > 0 && chosen.every((r) => !r.why) } })); } catch { /* ignore */ } }
     let ok = 0, stuck = 0;
     for (const r of chosen) { if (await acceptEntry(r)) { ok++; review = review.filter((x) => x !== r); sel.delete(r.id); } else stuck++; }
     await persistReview(); render(); renderReview();
@@ -608,5 +634,7 @@ export function initItems(env) {
     renderReview(); renderBudget(); renderScanLog();
   }
 
-  return { summary, acceptClean, openGraph, stagePopup, fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
+  return { summary, acceptClean, topCrafts, oldestPrices, lookup, setAutoAccept, isAutoAccept: () => autoAccept,
+    nameOf: (id) => { const r = items[id] || ingredients[id]; return r ? r.name : ''; },
+    ignore: (id) => { ignored.add(id); saveIgnored(); }, budgetValue: () => (budget ? budget.value : null), openGraph, stagePopup, fillIcons, gameIcon, load, render, add, applyMarket, applyPopup, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }

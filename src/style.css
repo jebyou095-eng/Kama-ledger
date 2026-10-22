@@ -606,3 +606,9 @@ main { padding-bottom: 210px; }
 html[data-theme="light"] .kamo-bubble { background: #fff; border: 2px solid #111; }
 html[data-theme="light"] .kamo-bubble::before { display: none; }
 .kamo-btn { order: -1; } .kamo-bubble::before { left: -9px; }
+.kb-text { white-space: pre-line; }
+.kb-ask { display: flex; gap: 6px; margin-top: 8px; }
+.kb-q { flex: 1; min-width: 0; padding: 5px 10px !important; border-radius: 999px !important; border: 2px solid #e3cf9b !important; background: #fffdf4 !important; color: #3a2418 !important; font: 600 13px "Segoe UI", sans-serif !important; }
+.kb-q:focus { outline: 3px solid #ffc83d88 !important; }
+.kb-go { border: 0; border-radius: 999px; padding: 5px 12px; background: #3a2418; color: #ffd04a; font: 800 12px "Segoe UI", sans-serif; cursor: pointer; }
+.kamo-bubble { max-width: 360px; }
