@@ -15,15 +15,19 @@
     "build:icon": "node scripts/generate-icon.js",
     "package:win": "npm run build:icon && npm run build && electron-builder --win nsis --publish never",
     "package:portable": "npm run build:icon && npm run build && electron-builder --win portable --publish never",
-    "test": "node tests/run-tests.cjs && node tests/transactions.cjs"
+    "test": "node tests/run-tests.cjs && node tests/transactions.cjs && node tests/items.cjs && node tests/market.cjs && node tests/detect.cjs && node tests/gamedata.cjs && node tests/kamo.cjs && node tests/filter.cjs && node tests/session.cjs && node tests/jet.cjs && node tests/kamo-ai.cjs && node tests/mcp.cjs && node tests/mcp-config.cjs && node tests/kamo-sound.cjs && node tests/kamo-motion.cjs && node tests/kamo-notebook.cjs && node tests/kamo-friend.cjs"
   },
   "devDependencies": {
-    "electron": "^44.9.0",
+    "electron": "^44.9.3",
     "electron-builder": "^26.0.0",
     "vite": "^5.4.10"
   },
   "dependencies": {
-    "jszip": "^3.10.2"
+    "@tesseract.js-data/fra": "^1.0.0",
+    "jszip": "^3.10.2",
+    "onnxruntime-web": "^1.30.0",
+    "phonemizer": "^1.2.1",
+    "tesseract.js": "^5.1.1"
   },
   "build": {
     "appId": "com.kama-ledger.app",
@@ -39,7 +43,9 @@
     ],
     "win": {
       "icon": "assets/kama-ledger.ico",
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "artifactName": "Kama-Ledger-Setup-${version}-${arch}.${ext}"
     },
     "nsis": {

@@ -47,7 +47,8 @@ export function normLine(raw) {
     const amount = bank[1].replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/[^\d]/g, '');
     return `${prefix}Banque : + ${Number(amount).toLocaleString('fr-FR')} Kamas${bank[2]}`;
   }
-  const purchase = normalized.match(/^(\d[\dOoIlIS ]*)\s*x\s+\[([^\]]+)\]\s*\(([\dOoIlISB .,]+)\s*kamas\)$/i);
+  // OCR often swaps the brackets around the item name ("[Rune)", "|Rune]", "{Rune]") or loses the final ")": accept those, then rewrite cleanly.
+  const purchase = normalized.match(/^(\d[\dOoIlIS ]*)\s*x\s+[\[\(|{]([^\]\[\)\(|{}]+)[\]\)|}]\s*[\(\[]([\dOoIlISB .,]+)\s*kamas?\s*[\)\]]?$/i);
   if (!purchase) return normalized;
   const quantity = purchase[1].replace(/\D/g, '');
   const amount = purchase[3].replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(/[SB]/g, (digit) => digit === 'S' ? '5' : '8').replace(/\D/g, '');
@@ -130,4 +131,43 @@ export function analyzePanel(lines, regionLabel) {
     return { ...classification, ingredients };
   }
   return { ...classification, lines: lines.slice() };
+}
+
+export function transactionToLine(transaction) {
+  const time = transaction.time ? `[${transaction.time}] ` : '';
+  const quantity = Number(transaction.quantity) > 0 ? Number(transaction.quantity) : 1;
+  const amount = (Number(transaction.amount) || 0).toLocaleString('fr-FR');
+  const item = String(transaction.item || '').trim();
+  if (transaction.type === 'sale') {
+    const detail = item && item !== 'Vente (banque)' ? ` (vente : ${quantity} x [${item}])` : '';
+    return `${time}Banque : + ${amount} Kamas${detail}`;
+  }
+  return `${time}${quantity} x [${item}] (${amount} kamas)`;
+}
+
+function cleanPatch(patch) {
+  const clean = {};
+  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim();
+  if (patch.amount !== undefined && Number.isFinite(Number(patch.amount)) && Number(patch.amount) >= 0) clean.amount = Math.round(Number(patch.amount));
+  if (patch.quantity === null || patch.quantity === '') clean.quantity = null;
+  else if (patch.quantity !== undefined && Number.isFinite(Number(patch.quantity)) && Number(patch.quantity) >= 1) clean.quantity = Math.round(Number(patch.quantity));
+  if (patch.type === 'sale' || patch.type === 'purchase') clean.type = patch.type;
+  return clean;
+}
+
+export function cleanTransactionPatch(patch) {
+  return cleanPatch(patch || {});
+}
+
+export function updateLedgerEntry(history, key, patch) {
+  return history.map((entry) => {
+    if (entry.key !== key) return entry;
+    const merged = { ...entry, ...cleanPatch(patch || {}), edited: true };
+    merged.line = transactionToLine(merged);
+    return merged;
+  });
+}
+
+export function removeLedgerEntry(history, key) {
+  return history.filter((entry) => entry.key !== key);
 }

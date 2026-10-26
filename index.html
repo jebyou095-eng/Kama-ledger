@@ -1,6 +1,7 @@
 <!doctype html>
-<html lang="en">
+<html data-theme="navy" lang="en">
   <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; worker-src 'self' blob:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kama Ledger</title>
@@ -8,24 +9,51 @@
   </head>
   <body>
     <main>
+      <div id="toasts" class="toasts" aria-live="polite"></div>
+      <dialog id="graph-dlg" class="gdlg"></dialog>
       <header class="app-header">
         <div class="brand-lockup">
           <img src="%BASE_URL%assets/kama-ledger.svg" alt="" width="48" height="48">
           <div><h1>Kama Ledger</h1><p>Local-first Dofus economy workspace</p></div>
         </div>
-        <div class="profile-tools">
-          <span id="adaptive-message">Your workflow stays on this device.</span>
-          <button class="quiet-button" id="reset-profile" type="button" title="Clear locally learned workflow preferences">Reset</button>
-        </div>
+        <span id="live-dot" class="live-dot" hidden>live scan</span>
         <div class="desktop-capture-controls" aria-label="Screen capture controls">
+          <details class="kamo-menu"><summary>Kamo</summary><div class="kamo-panel"><label class="theme-pick kamo-tog" title="Kamo walks around, points things out, tells you about price moves and scans for you when your prices are old and you are away. He never touches the game."><input type="checkbox" id="kamo-auto" checked> Kamo is free (autonomous)</label>
+          <label class="theme-pick kamo-tog" title="Kamo clicks buttons and types in this app for you. He never touches the game."><input type="checkbox" id="kamo-hands"> Kamo's hands</label>
+          <label class="theme-pick kamo-tog" title="Kamo floats over your screen to point things out and give advice. He only watches and talks; he never clicks or types in the game."><input type="checkbox" id="kamo-outside"> Kamo outside the app</label>
+          <label class="theme-pick" title="His sound: little chirps for each word, or a spoken voice from your system.">Sound <select id="kamo-sound"><option value="voice">Kamo's voice</option><option value="babble">Cute chirps</option><option value="speak">Speak (system voice)</option><option value="off">Silent</option></select></label>
+          <label class="theme-pick">Voice <select id="kamo-voice"><option value="merchant">Cheerful merchant</option><option value="sassy">Sassy sidekick</option><option value="sage">Calm trader</option></select></label></div></details>
+          <label class="theme-pick">Theme <select id="theme-sel"><option value="navy">Night navy</option><option value="game">Game brown</option><option value="light">Bright lime</option></select></label>
           <button class="btn" id="global-share-toggle" type="button" onclick="toggleShare()">Start screen share</button>
           <button class="btn" id="global-auto-toggle" type="button" onclick="toggleAuto()" disabled>Auto capture off</button>
         </div>
       </header>
       <div class="app-navigation">
-        <div class="workflow-strip"><span class="eyebrow">YOUR WORKFLOW</span><div id="workflow-shortcuts"><span class="mu">Your frequent tools will appear here as you work.</span></div></div>
         <nav id="nav" aria-label="Workspace sections"></nav>
       </div>
+
+      <section id="t-items">
+        <p class="mu intro">Type an item name to track it: its recipe ingredients come with it. Click a row to edit it. Green means worth crafting, red means a loss.</p>
+        <div class="row items-bar">
+          <label>Add an item or ingredient<input id="items-add" list="items-dl" autocomplete="off" placeholder="e.g. Marteau d'Ivoire"></label><datalist id="items-dl"></datalist>
+          <button class="btn primary-button" id="items-add-btn" type="button">Add</button>
+          <label>Search<input id="items-search" placeholder="filter list"></label>
+          </div>
+        <details class="filters"><summary>Filters and sorting</summary><div class="row"><label>Show<select id="items-kind"><option value="all">All</option><option value="item">Items only</option><option value="ingredient">Ingredients only</option><option value="craft">Crafts (items with a recipe)</option><option value="recycle">Recycles (pépites known)</option><option value="brisage">Brisage (concass value known)</option></select></label>
+          <label>Colour<select id="items-filter"><option value="all">All</option><option value="go">Green</option><option value="neutral">Grey</option><option value="loss">Red</option><option value="unknown">No data</option></select></label>
+          <label>Sort<select id="items-sort"><option value="best">Best first</option><option value="name">Name</option><option value="old">Oldest price</option></select></label>
+          <label>Grey if within ±%<input id="items-band" size="3" inputmode="numeric"></label>
+          <label>Easy if sold ≥<input id="items-easy" size="3" inputmode="numeric"></label>
+        </div></details>
+        <div class="row"><span id="items-count" class="mu"></span><span id="items-status" class="mu" aria-live="polite"></span><button class="btn" id="items-export" type="button">Export all categories (5 files)</button><label class="btn">Import…<input id="items-import" type="file" accept=".json" multiple hidden></label></div>
+        <div class="row scan-strip"><span id="items-budget" class="budget"></span><span class="seg" id="items-view" role="group" aria-label="View"><button type="button" data-v="list" class="on">List</button><button type="button" data-v="slots">Slots</button></span></div>
+        <div class="home"><div id="items-hero" class="hero"></div>
+          <div id="items-review" class="items-review" hidden></div>
+        </div>
+        <div id="items-scanlog" class="scanlog" aria-live="polite"></div>
+        <p id="items-stale" class="stale-banner" hidden></p>
+        <div id="items-list" class="items-list"></div>
+      </section>
 
       <section id="t-log">
         <p class="mu">Paste chat lines. Wrapped lines are joined, "Banque : +" lines count as income, unreadable lines are flagged.</p>
@@ -35,20 +63,23 @@
       </section>
 
       <section id="t-cap">
-        <p class="mu">Share a game screen or window and capture a panel. OCR reads the panel title first; named regions override title detection. Chat keeps only purchases and bank-credit sales. “Concassed” is treated as Brisage. Unrecognized panels stay in review instead of being guessed.</p>
-        <div class="row">
+        <div class="card">
+          <h3><span class="step">1</span> Game screen</h3>
+          <p class="mu">Share the game window once. The app then finds the market list, lot popup, Recettes window, budget and chat by itself: nothing to draw.</p>
+          <div class="row">
           <button class="btn primary-button" onclick="shareScreen()">Share screen or window</button>
           <button class="btn stop-button" id="stop-share" onclick="stopShare()" type="button" hidden>Stop sharing</button>
-          <button class="btn" id="game-interaction" type="button" aria-pressed="false" disabled>Game input: off</button>
-          <button class="btn" id="rgbtn" onclick="drawMode()">Set region</button>
-          <label class="region-label">Region type<select id="capture-region-label"><option value="auto">Auto-detect title</option><option value="chat">Chat</option><option value="recipes">Recettes</option><option value="market-list">Hôtel de vente</option><option value="market-chart">Cours du marché</option><option value="inventory">Inventaire</option><option value="brisage">Brisage</option></select></label>
-          <button class="btn" id="autobtn" onclick="toggleAuto()">Auto capture: off</button>
-          <button class="btn" onclick="snap()">Snap now</button>
-          <span class="mu">Esc to capture</span>
-          <label class="btn">Add images…<input type="file" id="fi" accept="image/*" multiple hidden></label>
-        </div>
+            <label class="chk"><input type="checkbox" id="live-scan"> Live scan while I play</label>
+          </div>
         <p id="capture-status" class="capture-status" aria-live="polite">Not sharing a screen or window.</p>
-        <p id="interaction-status" class="interaction-status" hidden>Manual input only: clicks on this preview and key presses while Kama Ledger is focused are sent to the selected game window.</p>
+        <div class="row hotkey-row">
+          <label>Capture hotkey (works while you are in the game)<input id="hotkey" readonly></label>
+          <button class="btn" id="hotkey-set" type="button">Change</button>
+          <label class="chk"><input type="checkbox" id="beep" checked> beep on capture</label>
+          <span id="hotkey-status" class="mu" aria-live="polite"></span>
+        </div>
+        <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="pboxes" style="position:absolute;inset:0;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
+        </div>
         <div id="capture-picker" class="capture-picker" hidden>
           <div class="capture-picker-panel" role="dialog" aria-modal="true" aria-labelledby="capture-picker-title">
             <header class="capture-picker-header">
@@ -70,16 +101,48 @@
             </div>
           </div>
         </div>
-        <div id="vw" style="position:relative;display:none;max-width:100%"><video id="vid" muted playsinline tabindex="0" style="width:100%;display:block"></video><div id="ov" style="position:absolute;inset:0;cursor:crosshair;pointer-events:none"></div><div id="rg" style="position:absolute;border:2px solid #4cc38a;display:none;pointer-events:none"></div></div>
+        <div class="card">
+          <h3><span class="step">2</span> Scan</h3>
+          <p class="mu">Press <b>Scan now</b>, use the capture hotkey in the game, or tick <b>Live scan</b>. Every price is read, matched to the game data and put in <b>Prices waiting for your approval</b> (Items tab).</p>
+          <div class="row"><button class="btn primary-button" id="scan-now" type="button">Scan now</button><button class="btn" id="sess-start" type="button">Start guided test (automatic)</button><label class="btn">Scan screenshot file(s)…<input id="scan-file" type="file" accept="image/*" multiple hidden></label><span id="scan-status" class="mu" aria-live="polite"></span></div>
+        </div>
+        <details class="card fold">
+          <summary>Draw areas by hand (only if automatic detection misses a panel)</summary>
+          <p class="mu">Draw each panel once on the shared window or on a screenshot. When any area is set, the app uses these areas instead of automatic detection.</p>
+          <div id="profile-list"></div>
+          <div class="row"><label class="btn">Load a screenshot to draw on…<input id="scan-still" type="file" accept="image/*" hidden></label></div>
+        </details>
+        <details class="card fold">
+          <summary>Diagnostics for Claude</summary>
+          <div class="row diag-row"><button class="btn primary-button" id="diag-run" type="button">Run diagnostics (makes a small file to send to Claude)</button><label class="btn">…or test screenshot file(s)<input id="diag-files" type="file" accept="image/*" multiple hidden></label><label class="chk"><input type="checkbox" id="diag-chat"> include the chat area (may show player names)</label><span id="diag-status" class="mu" aria-live="polite"></span></div>
+        </details>
+        <details class="card fold">
+          <summary>Screenshot queue and OCR text (older reader, feeds the Ledger history)</summary>
+          <p class="mu">Capture screenshots, read the whole text, review purchases and sales, then save them to the ledger.</p>
+        <div class="row">
+          <button class="btn" id="rgbtn" onclick="drawMode()">Set region</button>
+          <label class="region-label">Region type<select id="capture-region-label"><option value="auto">Auto-detect title</option><option value="chat">Chat</option><option value="recipes">Recettes</option><option value="market-list">Hôtel de vente</option><option value="market-chart">Cours du marché</option><option value="inventory">Inventaire</option><option value="brisage">Brisage</option></select></label>
+          <button class="btn" id="autobtn" onclick="toggleAuto()">Auto capture: off</button>
+          <button class="btn" onclick="snap()">Snap now</button>
+          <span class="mu">Esc to capture</span>
+          <label class="btn">Add images…<input type="file" id="fi" accept="image/*" multiple hidden></label>
+        </div>
+          <div class="row"></div>
         <p class="mu">Queue: <b id="qn">0</b> capture(s)</p>
         <div id="q" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         <div class="row"><button class="btn" onclick="readAll()">Read all (OCR)</button><button class="btn" onclick="clearQ()">Clear queue</button><span id="ocrst" class="mu"></span></div>
         <div class="row"><span id="unclassified-count" class="mu">Unclassified: 0</span><button class="btn" id="show-unclassified" type="button">Review unclassified</button></div>
         <div id="unclassified-list" class="unclassified-list" hidden></div>
+        <datalist id="review-names"></datalist>
         <div id="transaction-preview" class="transaction-preview" aria-live="polite"></div>
+        <div class="row" id="review-actions" hidden>
+          <button class="btn primary-button" id="review-save" type="button">Save to ledger</button>
+          <span id="review-status" class="mu" aria-live="polite">Check the lines above. Fix any name, quantity or price, then save.</span>
+        </div>
         <textarea id="ocrtext" placeholder="The OCR result appears here. Fix anything wrong, then Calculate."></textarea>
         <div id="ocrwarn" class="bad"></div>
         <div class="row"><button class="btn" onclick="toLog()">Calculate in Log tab</button></div>
+        </details>
       </section>
 
       <section id="t-db">
@@ -101,9 +164,9 @@
         <div id="dbgrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
         </div>
         <div id="db-ledger-view" hidden>
-          <p class="mu">Purchases and bank-recorded sales recognized by OCR are saved locally here.</p>
+          <p class="mu">Purchases and bank-recorded sales are saved locally here. Click a name, quantity or amount to correct it; changes save when you leave the field.</p>
           <div id="ledger-summary" class="ledger-summary"></div>
-          <div class="table-scroll"><table id="ledger-table" class="ledger-table"><thead><tr><th>Time</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Source</th></tr></thead><tbody></tbody></table></div>
+          <div class="table-scroll"><table id="ledger-table" class="ledger-table"><thead><tr><th>Time</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Source</th><th></th></tr></thead><tbody></tbody></table></div>
           <p id="ledger-empty" class="mu" hidden>No recognized sales or purchases yet. Run Read all (OCR) on captures.</p>
         </div>
       </section>
@@ -151,11 +214,27 @@
       </section>
 
       <section id="t-data">
-        <p class="mu">Load your Datafus data once: the .zip, the Datafus-master folder, or several of its files. It is read here in the browser (nothing is uploaded), only names, levels, types, recipes and stats are kept, and the result stays saved in this browser. Datafus stops at Dofus 2 (December 2024), so newer items or changed recipes can be missing: check anything surprising in the game.</p>
-        <div class="row"><label class="btn">Choose zip / files<input id="dfile" type="file" multiple accept=".zip,.json" hidden></label><label class="btn">Choose a folder<input id="dfold" type="file" webkitdirectory hidden></label><button class="btn" onclick="dataExport()">Export compact file</button><button class="btn" onclick="dataClear()">Remove saved data</button></div>
-        <p id="dstat" class="mu">No data loaded.</p>
-        <div class="row"><label>Search an item<input id="dq" autocomplete="off"></label></div>
-        <div id="dres"></div>
+        <div class="card">
+          <h3>Game data</h3>
+          <p class="mu">Items, levels, recipes and images. The app ships with a copy; <b>Update</b> downloads the current one (needs internet once, then works offline). Your prices, notes and edited recipes are never touched.</p>
+          <div class="row"><button class="btn primary-button" id="gd-update" type="button">Update game data</button><span id="gd-status" class="mu" aria-live="polite"></span></div>
+          <p id="dstat" class="mu">No data loaded.</p>
+        </div>
+        <div class="card">
+          <h3>Look up an item</h3>
+          <div class="row"><label>Search an item<input id="dq" autocomplete="off"></label></div>
+          <div id="dres"></div>
+        </div>
+        <details class="card fold">
+          <summary>Advanced: load data from files, go back to the shipped copy</summary>
+          <p class="mu">Only needed if the update cannot reach the internet. Load a Datafus .zip, the Datafus-master folder, or several of its files; they are read on this computer and nothing is uploaded.</p>
+          <div class="row"><label class="btn">Choose zip / files<input id="dfile" type="file" multiple accept=".zip,.json" hidden></label><label class="btn">Choose a folder<input id="dfold" type="file" webkitdirectory hidden></label><button class="btn" onclick="dataExport()">Export compact file</button><button class="btn" onclick="dataClear()">Reload the game data shipped with the app</button></div>
+        </details>
+        <details class="card fold">
+          <summary>Danger zone</summary>
+          <p class="mu">Deletes every price, item, capture and setting stored by the app on this computer. This cannot be undone.</p>
+          <div class="row"><button class="btn stop-button" onclick="resetEverything()">Erase ALL app data (fresh start)</button></div>
+        </details>
       </section>
     </main>
     <script type="module" src="/src/main.js"></script>

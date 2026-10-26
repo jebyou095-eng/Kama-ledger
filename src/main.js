@@ -1,6 +1,17 @@
 import './style.css';
 import JSZip from 'jszip';
-import { analyzePanel, mergeLedgerHistory, normLine as normalizeTransactionLine, transactionLines } from './transactions.js';
+import { initTheme } from './theme.js';
+import { initKamo } from './kamo.js';
+import { initItems } from './items-ui.js';
+import { parseLots } from './items.js';
+import { parseTooltip } from './jet.js';
+import { parseBudget, parseMarketChart, parsePopup, snapItem } from './market.js';
+import { mergeIndex, SUBTYPES, pageItems, lastPage } from './gamedata.js';
+import * as scan from './scan.js';
+import { runDiagnostics } from './diag.js';
+import { APP_BUILD } from './diag-plan.js';
+import { STEPS as SESS_STEPS, newSession, onEvent as sessOn, report as sessReport } from './session.js';
+import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
 /*CORE*/
 function num(s) {
@@ -175,7 +186,9 @@ var KNOWN = { vitalite: [0.2, 1], force: [1, 1], intelligence: [1, 1], agilite: 
 var F = function (x) { return isFinite(x) ? Math.round(x).toLocaleString('fr-FR') : '-'; };
 var $ = function (id) { return document.getElementById(id); };
 
-var tabs = [['log', 'Log total'], ['cap', 'Capture'], ['db', 'Database'], ['rec', 'Recycling'], ['tax', 'Sell & tax'], ['bri', 'Brisage'], ['craft', 'Craft'], ['data', 'Data']];
+// Tabs in the order of the work: collect prices (Items, Scan), then the calculators, then stored data.
+var tabs = [['items', 'Items'], ['cap', 'Scan'], ['log', 'Chat log'], ['craft', 'Craft'], ['rec', 'Recycling'], ['bri', 'Brisage'], ['tax', 'Sell & tax'], ['db', 'History'], ['data', 'Game data']];
+var TAB_GROUP = { items: 'Work', craft: 'Calculators', db: 'Stored data' };
 function loadFlowProfile() {
   try {
     var saved = JSON.parse(localStorage.getItem('kamaLedgerFlow') || '{}');
@@ -191,38 +204,19 @@ function recordAction(action) {
   saveFlowProfile();
   renderWorkflow();
 }
-function renderWorkflow() {
-  var shortcuts = $('workflow-shortcuts');
-  var used = tabs.filter(function (tab) { return flowProfile.views[tab[0]]; });
-  used.sort(function (a, b) { return flowProfile.views[b[0]] - flowProfile.views[a[0]]; });
-  shortcuts.replaceChildren();
-  if (!used.length) {
-    var note = document.createElement('span');
-    note.className = 'mu';
-    note.textContent = 'Your frequent tools will appear here as you work.';
-    shortcuts.appendChild(note);
-  } else {
-    used.slice(0, 3).forEach(function (tab) {
-      var shortcut = document.createElement('button');
-      shortcut.type = 'button';
-      shortcut.className = 'workflow-link';
-      shortcut.textContent = tab[1];
-      shortcut.addEventListener('click', function () { show(tab[0]); });
-      shortcuts.appendChild(shortcut);
-    });
-  }
-  var total = Object.keys(flowProfile.actions).reduce(function (sum, action) { return sum + flowProfile.actions[action]; }, 0);
-  $('adaptive-message').textContent = total ? total + ' workflow interactions learned locally' : 'Your workflow stays on this device.';
-}
+function renderWorkflow() {}   // the old 'frequent tools' strip was removed from the header
 
 tabs.forEach(function (t, i) {
+  if (TAB_GROUP[t[0]]) { var g = document.createElement('span'); g.className = 'nav-group'; g.textContent = TAB_GROUP[t[0]]; $('nav').appendChild(g); }
   var b = document.createElement('button');
   b.textContent = t[1];
   b.onclick = function () { show(t[0]); };
   b.id = 'b-' + t[0];
   $('nav').appendChild(b);
 });
+var kamoRef = null;
 function show(k) {
+  if (kamoRef) kamoRef.onTab(k);
   tabs.forEach(function (t) {
     $('t-' + t[0]).classList.toggle('on', t[0] === k);
     $('b-' + t[0]).classList.toggle('on', t[0] === k);
@@ -233,11 +227,6 @@ function show(k) {
   renderWorkflow();
   if (k === 'db' && typeof renderDB === 'function') showDatabaseView(databaseView);
 }
-$('reset-profile').addEventListener('click', function () {
-  flowProfile = { views: {}, actions: {}, preferredCapture: null };
-  saveFlowProfile();
-  renderWorkflow();
-});
 function runLog() {
   var r = parseLog($('log').value);
   $('logres').innerHTML = 'Spent: <span class="big">' + F(r.total) + '</span> kamas in ' + r.lines + ' lines' + (r.income ? ' &nbsp; Income logged: ' + F(r.income) : '');
@@ -296,6 +285,7 @@ function addB(v) {
   $('bt').tBodies[0].appendChild(tr);
   calcB();
 }
+var lastBriValue = 0;
 function calcB() {
   var l = num($('bl').value), c = num($('bc').value), tr = 0, tv = 0, v100 = 0;
   [].forEach.call($('bt').tBodies[0].rows, function (r) {
@@ -308,6 +298,7 @@ function calcB() {
     if (isFinite(w)) tv += w;
     if (isFinite(n1 * pr)) v100 += n1 * pr;
   });
+  lastBriValue = tv;
   $('bsum').innerHTML = 'Runes: ' + F(tr) + ' &nbsp; Value: ' + F(tv);
   var ip = num($('bp').value);
   $('bmin').textContent = (isFinite(ip) && v100 > 0) ? 'Minimum coefficient to break even (after 2% tax on selling the runes): ' + (ip / (0.98 * v100) * 100).toFixed(0) + '%  (value at 100% = ' + F(v100) + ')' : 'Enter rune prices and the item price to get the break-even coefficient.';
@@ -316,7 +307,6 @@ function calcB() {
 
 var Q = [], region = null, auto = false, stream = null, lastSmall = null, x0 = 0, y0 = 0, dragging = false;
 var captureSources = [], captureSourceType = 'screen', captureSelection = null, capturePickerResolve = null, pendingCaptureSource = null, activeCaptureSource = null;
-var interactionEnabled = false;
 var unclassifiedCaptures = [];
 function renderCaptureSources() {
   var list = $('capture-sources');
@@ -387,14 +377,13 @@ $('capture-picker').addEventListener('click', function (event) {
 });
 function showCaptureStream(s) {
   stream = s;
+  setTimeout(function () { sessEvent({ type: 'share' }); }, 600);
   activeCaptureSource = pendingCaptureSource;
   if (window.kamaDesktopCapture) window.kamaDesktopCapture.setSharing(true);
   $('vid').srcObject = s;
   $('vid').play();
   $('vw').style.display = 'block';
   $('stop-share').hidden = false;
-  $('game-interaction').disabled = !window.kamaDesktopCapture || !activeCaptureSource || activeCaptureSource.type !== 'window';
-  $('interaction-status').hidden = $('game-interaction').disabled;
   var sourceName = pendingCaptureSource ? pendingCaptureSource.name : 'shared screen or window';
   $('capture-status').textContent = 'Sharing ' + sourceName + '.';
   if (pendingCaptureSource) {
@@ -411,10 +400,7 @@ function updateCaptureControls() {
   $('global-share-toggle').textContent = stream ? 'Stop screen share' : 'Start screen share';
   $('global-auto-toggle').textContent = 'Auto capture ' + (auto ? 'on' : 'off');
   $('global-auto-toggle').disabled = !stream;
-  $('game-interaction').textContent = 'Game input: ' + (interactionEnabled ? 'on' : 'off');
-  $('game-interaction').setAttribute('aria-pressed', String(interactionEnabled));
-  $('game-interaction').classList.toggle('game-input-on', interactionEnabled);
-  $('game-interaction').disabled = !stream || !window.kamaDesktopCapture || !activeCaptureSource || activeCaptureSource.type !== 'window';
+  $('live-dot').hidden = !($('live-scan').checked && stream);
 }
 function endCapture(stopTracks) {
   var activeStream = stream;
@@ -423,32 +409,18 @@ function endCapture(stopTracks) {
   activeCaptureSource = null;
   auto = false;
   lastSmall = null;
-  interactionEnabled = false;
-  if (window.kamaDesktopCapture) window.kamaDesktopCapture.setInteractionEnabled(false);
   if (stopTracks && activeStream) activeStream.getTracks().forEach(function (track) { track.stop(); });
   $('vid').srcObject = null;
   $('vw').style.display = 'none';
   $('stop-share').hidden = true;
   $('autobtn').textContent = 'Auto capture: off';
   $('capture-status').textContent = 'Screen sharing stopped.';
-  $('interaction-status').hidden = true;
   updateCaptureControls();
 }
 function stopShare() {
   if (!stream) return;
   recordAction('stop-share');
   endCapture(true);
-}
-async function toggleGameInteraction() {
-  if (!window.kamaDesktopCapture || !stream || !activeCaptureSource || activeCaptureSource.type !== 'window') return;
-  var requestedState = !interactionEnabled;
-  var result = await window.kamaDesktopCapture.setInteractionEnabled(requestedState);
-  interactionEnabled = !!(result && result.enabled);
-  updateCaptureControls();
-  $('interaction-status').textContent = interactionEnabled
-    ? 'Manual input is on: click the game preview or press a single key while Kama Ledger is focused. Turn Game input off to stop forwarding.'
-    : (result && result.reason) || 'Manual input is off.';
-  if (interactionEnabled) $('vid').focus();
 }
 function toggleShare() {
   if (stream) {
@@ -479,53 +451,115 @@ function shareScreen() {
     .then(function (s) { if (s) showCaptureStream(s); })
     .catch(function (e) { alert('Could not share the window: ' + e.message); });
 }
-$('game-interaction').addEventListener('click', toggleGameInteraction);
-$('vid').addEventListener('click', function (event) {
-  if (!interactionEnabled || !stream || !window.kamaDesktopCapture) return;
-  var bounds = this.getBoundingClientRect();
-  var point = { x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height };
-  window.kamaDesktopCapture.sendClick(point).then(function (result) {
-    if (result && !result.ok) $('interaction-status').textContent = result.reason;
-  }).catch(showInputError);
-});
-document.addEventListener('keydown', function (event) {
-  if (!interactionEnabled || !stream || !window.kamaDesktopCapture || $('capture-picker').hidden === false) return;
-  var target = event.target;
-  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
-  if (['Enter', 'Space', 'Tab', 'Backspace', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].indexOf(event.key) !== -1 || /^[a-z0-9]$/i.test(event.key)) {
-    event.preventDefault();
-    window.kamaDesktopCapture.sendKey(event.key).then(showInputResult).catch(showInputError);
+var reviewRows = [];
+var reviewSourceIds = null;
+var lastSavedKeys = [];
+function setReview(transactions, fresh) {
+  reviewRows = transactions.map(function (transaction) { return Object.assign({}, transaction); });
+  if (fresh) lastSavedKeys = [];
+  renderReview();
+}
+function syncReviewText() {
+  $('ocrtext').value = reviewRows.map(transactionToLine).join('\n');
+  $('review-status').textContent = reviewRows.length
+    ? reviewRows.length + ' line(s). Edit anything wrong, then save.'
+    : 'Nothing left to save.';
+}
+function matchInfo(name) {
+  if (!P) return { text: '', bad: false };
+  var found = pickItem(P, name);
+  if (found) return { text: 'Lv ' + found[2] + ' ' + (P.idx.types[found[3]] || ''), bad: false };
+  var guess = suggest(P, name);
+  return { text: guess ? 'not in data' : 'not in data', bad: true, guess: guess };
+}
+function renderReview() {
+  var box = $('transaction-preview');
+  box.replaceChildren();
+  $('review-actions').hidden = !reviewRows.length;
+  if (!reviewRows.length) {
+    if ($('ocrtext').value.trim()) {
+      var empty = document.createElement('p');
+      empty.className = 'mu';
+      empty.textContent = 'No sale or purchase lines recognized.';
+      box.appendChild(empty);
+    }
+    return;
   }
-});
-function showInputResult(result) {
-  if (result && !result.ok) $('interaction-status').textContent = result.reason;
-}
-function showInputError(error) {
-  $('interaction-status').textContent = 'Input error: ' + error.message;
-}
-function renderTransactionPreview() {
-  var preview = $('transaction-preview');
-  var transactions = transactionLines($('ocrtext').value.split('\n'));
-  preview.replaceChildren();
-  transactions.forEach(function (transaction) {
-    var line = document.createElement('div');
-    line.className = 'transaction-line ' + transaction.type;
-    var kind = document.createElement('strong');
-    kind.textContent = transaction.type === 'sale' ? 'SOLD' : 'BOUGHT';
-    var text = document.createElement('span');
-    text.textContent = transaction.item + (transaction.quantity ? ' x' + transaction.quantity : '');
-    var amount = document.createElement('b');
-    amount.textContent = (transaction.type === 'sale' ? '+' : '-') + ' ' + F(transaction.amount) + ' kamas';
-    line.append(kind, text, amount);
-    preview.appendChild(line);
+  var table = document.createElement('table');
+  table.className = 'review-table';
+  var head = table.createTHead().insertRow();
+  ['Type', 'Item', 'Qty', 'Amount (kamas)', 'Check', ''].forEach(function (label) {
+    var th = document.createElement('th');
+    th.textContent = label;
+    head.appendChild(th);
   });
-  if (!transactions.length && $('ocrtext').value.trim()) {
-    var empty = document.createElement('p');
-    empty.className = 'mu';
-    empty.textContent = 'No sale or purchase lines recognized.';
-    preview.appendChild(empty);
-  }
+  var body = table.createTBody();
+  reviewRows.forEach(function (row, index) {
+    var tr = body.insertRow();
+    tr.className = row.type;
+    var typeCell = tr.insertCell(), type = document.createElement('select');
+    [['purchase', 'Bought'], ['sale', 'Sold']].forEach(function (option) {
+      var o = document.createElement('option');
+      o.value = option[0]; o.textContent = option[1]; type.appendChild(o);
+    });
+    type.value = row.type;
+    type.addEventListener('change', function () { row.type = type.value; syncReviewText(); renderReview(); });
+    typeCell.appendChild(type);
+
+    var itemCell = tr.insertCell(), item = document.createElement('input');
+    item.value = row.item; item.setAttribute('list', 'review-names'); item.setAttribute('aria-label', 'Item name');
+    var matchCell = document.createElement('td');
+    function paintMatch() {
+      var info = matchInfo(row.item);
+      matchCell.replaceChildren();
+      matchCell.className = 'match' + (info.bad ? ' bad' : '');
+      matchCell.append(info.text);
+      if (info.guess) {
+        var use = document.createElement('button');
+        use.type = 'button'; use.className = 'row-button'; use.textContent = 'use "' + info.guess + '"';
+        use.addEventListener('click', function () { row.item = info.guess; syncReviewText(); renderReview(); });
+        matchCell.append(' ', use);
+      }
+    }
+    item.addEventListener('input', function () {
+      row.item = item.value;
+      var list = $('review-names');
+      list.replaceChildren();
+      if (P) searchItems(P, item.value, 15).forEach(function (found) { var o = document.createElement('option'); o.value = found[1]; list.appendChild(o); });
+      syncReviewText(); paintMatch();
+    });
+    itemCell.appendChild(item);
+    var qtyCell = tr.insertCell(), qty = document.createElement('input');
+    qty.className = 'num'; qty.value = row.quantity || ''; qty.setAttribute('aria-label', 'Quantity'); qty.inputMode = 'numeric';
+    qty.addEventListener('input', function () { var n = Number(String(qty.value).replace(/\D/g, '')); row.quantity = n > 0 ? n : null; syncReviewText(); });
+    qtyCell.appendChild(qty);
+    var amountCell = tr.insertCell(), amount = document.createElement('input');
+    amount.className = 'num'; amount.value = row.amount; amount.setAttribute('aria-label', 'Amount in kamas'); amount.inputMode = 'numeric';
+    amount.addEventListener('input', function () { var n = Number(String(amount.value).replace(/\D/g, '')); row.amount = isFinite(n) ? n : 0; syncReviewText(); });
+    amountCell.appendChild(amount);
+    tr.appendChild(matchCell);
+    var delCell = tr.insertCell(), del = document.createElement('button');
+    del.type = 'button'; del.className = 'row-button'; del.textContent = '×'; del.title = 'Remove this line'; del.setAttribute('aria-label', 'Remove this line');
+    del.addEventListener('click', function () { reviewRows.splice(index, 1); syncReviewText(); renderReview(); });
+    delCell.appendChild(del);
+    paintMatch();
+  });
+  box.appendChild(table);
 }
+function renderTransactionPreview() { reviewSourceIds = null; setReview(transactionLines($('ocrtext').value.split('\n')), true); }
+async function saveReview() {
+  if (!reviewRows.length) return;
+  var ids = reviewSourceIds || Q.map(function (capture) { return capture.id; }).filter(function (id) { return id != null; });
+  var existing = await metaGet('ledger-history') || [];
+  if (lastSavedKeys.length) existing = existing.filter(function (entry) { return lastSavedKeys.indexOf(entry.key) < 0; });
+  var before = existing.map(function (entry) { return entry.key; });
+  ledgerHistory = mergeLedgerHistory(existing, reviewRows, ids, Date.now());
+  lastSavedKeys = ledgerHistory.map(function (entry) { return entry.key; }).filter(function (key) { return before.indexOf(key) < 0; });
+  await metaPut('ledger-history', ledgerHistory);
+  renderLedgerHistory();
+  $('review-status').textContent = 'Saved ' + reviewRows.length + ' line(s) to the ledger. You can keep editing and save again to replace them.';
+}
+$('review-save').addEventListener('click', saveReview);
 $('ocrtext').addEventListener('input', renderTransactionPreview);
 $('show-unclassified').addEventListener('click', function () {
   $('unclassified-list').hidden = !$('unclassified-list').hidden;
@@ -554,7 +588,12 @@ function renderUnclassified() {
       if (!select.value) return;
       try {
         var analyzed = analyzePanel(capture.lines, select.value);
-        if (analyzed.panel === 'chat') await saveLedgerTransactions(analyzed.transactions, capture.sourceIds);
+        if (analyzed.panel === 'chat') {
+          $('ocrtext').value = analyzed.transactions.map(function (transaction) { return transaction.line; }).join('\n');
+          renderTransactionPreview();
+          reviewSourceIds = capture.sourceIds;
+          show('cap');
+        }
         else if (analyzed.panel === 'recipes') {
           var prior = await metaGet('recipe-observations') || [];
           prior.push({ capturedAt: capture.createdAt, sourceIds: capture.sourceIds, ingredients: analyzed.ingredients });
@@ -592,23 +631,25 @@ $('ov').addEventListener('mousedown', function (e) {
 $('ov').addEventListener('mousemove', function (e) {
   if (!dragging) return;
   var r = this.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-  region = {
+  var drawn = {
     x: Math.max(0, Math.min(x, x0)),
     y: Math.max(0, Math.min(y, y0)),
     w: Math.min(1, Math.abs(x - x0)),
     h: Math.min(1, Math.abs(y - y0))
   };
+  if (profileTarget) drawRect = drawn; else region = drawn;
   var g = $('rg');
   g.style.display = 'block';
-  g.style.left = region.x * 100 + '%';
-  g.style.top = region.y * 100 + '%';
-  g.style.width = region.w * 100 + '%';
-  g.style.height = region.h * 100 + '%';
+  g.style.left = drawn.x * 100 + '%';
+  g.style.top = drawn.y * 100 + '%';
+  g.style.width = drawn.w * 100 + '%';
+  g.style.height = drawn.h * 100 + '%';
 });
 $('ov').addEventListener('mouseup', function () {
   dragging = false;
   this.style.pointerEvents = 'none';
   $('rgbtn').textContent = 'Set region';
+  if (profileTarget) finishProfileRegion();
 });
 function grab() {
   var v = $('vid');
@@ -621,18 +662,16 @@ function grab() {
 }
 function push(url, src) {
   var rec = { ts: Date.now(), url, text: null, src: src || 'auto' };
-  dbAdd(rec).then(function (id) {
+  return dbAdd(rec).then(function (id) {
     Q.push({ id, url });
     renderQ();
     if ($('t-db').classList.contains('on')) showDatabaseView(databaseView);
+    return id;
   });
 }
 function snap() {
   var c = grab();
   if (c) { recordAction('snap'); push(c.toDataURL('image/png'), 'snap'); } else alert('Share the game window first.');
-}
-if (window.kamaDesktopCapture) {
-  window.kamaDesktopCapture.onGlobalSnapshot(function () { snap(); });
 }
 document.addEventListener('keydown', function (event) {
   var target = event.target;
@@ -643,11 +682,6 @@ document.addEventListener('keydown', function (event) {
     target.isContentEditable
   ));
   if (event.key === 'Escape' && !isTyping && !event.metaKey && !event.ctrlKey && !event.altKey) {
-    if (interactionEnabled && stream && window.kamaDesktopCapture) {
-      event.preventDefault();
-      window.kamaDesktopCapture.sendKey('Escape').catch(function () {});
-      return;
-    }
     event.preventDefault();
     if (!$('capture-picker').hidden) {
       closeCapturePicker();
@@ -740,9 +774,8 @@ async function readAll() {
   if (!Q.length) { $('ocrst').textContent = 'Queue is empty.'; return; }
   try {
     $('ocrst').textContent = 'Loading OCR engine...';
-    await loadTess();
-    var w = await Tesseract.createWorker('fra');
-    try { await w.setParameters({ tessedit_pageseg_mode: '6' }); } catch (e) {}
+    var w = await scan.getWorker();
+    await w.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
     var caps = [];
     for (var i = 0; i < Q.length; i++) {
       $('ocrst').textContent = 'Reading ' + (i + 1) + ' / ' + Q.length;
@@ -750,15 +783,13 @@ async function readAll() {
       caps.push(ocrToLines(r.data.text));
       if (Q[i].id != null) await dbUpdate(Q[i].id, { text: r.data.text });
     }
-    await w.terminate();
     var s = stitch(caps);
     var panel = analyzePanel(s.lines, $('capture-region-label').value);
     var transactions = panel.panel === 'chat' ? panel.transactions : [];
     $('ocrtext').value = panel.panel === 'chat' ? transactions.map(function (transaction) { return transaction.line; }).join('\n') : '';
     renderTransactionPreview();
     var sourceIds = Q.map(function (capture) { return capture.id; }).filter(function (id) { return id != null; });
-    if (panel.panel === 'chat') await saveLedgerTransactions(transactions, sourceIds);
-    else if (panel.panel === 'unclassified') {
+    if (panel.panel === 'unclassified') {
       unclassifiedCaptures.push({ id: Date.now(), sourceIds: sourceIds, lines: s.lines, createdAt: Date.now() });
       await metaPut('unclassified-captures', unclassifiedCaptures);
       renderUnclassified();
@@ -768,7 +799,7 @@ async function readAll() {
     $('ocrst').textContent = panel.panel === 'unclassified'
       ? 'Panel title was not recognized. Capture added to Unclassified for manual labeling.'
       : panel.panel === 'chat'
-        ? (transactions.length ? 'Chat: found ' + transactions.length + ' sale/purchase line(s). Sales are green; purchases are red.' : 'Chat recognized; no purchase or bank-credit sale lines found.')
+        ? (transactions.length ? 'Chat: found ' + transactions.length + ' sale/purchase line(s). Check them, fix anything wrong, then press Save to ledger.' : 'Chat recognized; no purchase or bank-credit sale lines found.')
         : panel.label + ' recognized. ' + (panel.ingredients ? panel.ingredients.length + ' recipe ingredient(s) found; market and other values remain unconfirmed.' : 'Panel text retained for review, not added to the trade ledger.');
   } catch (e) { $('ocrst').textContent = 'Error: ' + e.message; }
 }
@@ -787,11 +818,13 @@ $('capture-region-label').addEventListener('change', function () {
 function dbOpen() {
   return new Promise(function (res) {
     try {
-      var r = indexedDB.open('kama-ledger', 2);
+      var r = indexedDB.open('kama-ledger', 3);
       r.onupgradeneeded = function () {
         var d = r.result;
         if (!d.objectStoreNames.contains('shots')) d.createObjectStore('shots', { keyPath: 'id', autoIncrement: true });
         if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+        if (!d.objectStoreNames.contains('Items')) d.createObjectStore('Items', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('Ingredients')) d.createObjectStore('Ingredients', { keyPath: 'id' });
       };
       r.onsuccess = function () { DB = r.result; res(); };
       r.onerror = function () { res(); };
@@ -846,26 +879,64 @@ function showDatabaseView(view) {
   $('db-ledger-view').hidden = captures;
   if (captures) renderDB(); else renderLedgerHistory();
 }
+function ledgerTotals() {
+  var totals = ledgerHistory.reduce(function (result, entry) {
+    result[entry.type] += Number(entry.amount) || 0;
+    return result;
+  }, { sale: 0, purchase: 0 });
+  $('ledger-summary').textContent = 'Sales: +' + F(totals.sale) + ' kamas  |  Purchases: -' + F(totals.purchase) + ' kamas  |  Net: ' + (totals.sale - totals.purchase >= 0 ? '+' : '-') + F(Math.abs(totals.sale - totals.purchase)) + ' kamas';
+}
+async function editLedger(key, patch) {
+  ledgerHistory = updateLedgerEntry(ledgerHistory, key, patch);
+  await metaPut('ledger-history', ledgerHistory);
+  ledgerTotals();
+}
 function renderLedgerHistory() {
   var rows = $('ledger-table').tBodies[0];
   if (!rows) return;
   var sorted = ledgerHistory.slice().sort(function (a, b) { return b.recordedAt - a.recordedAt; });
   rows.replaceChildren();
-  var totals = sorted.reduce(function (result, entry) {
-    result[entry.type] += Number(entry.amount) || 0;
-    return result;
-  }, { sale: 0, purchase: 0 });
-  $('ledger-summary').textContent = 'Sales: +' + F(totals.sale) + ' kamas  |  Purchases: -' + F(totals.purchase) + ' kamas';
+  ledgerTotals();
   $('ledger-empty').hidden = sorted.length > 0;
   sorted.forEach(function (entry) {
     var row = document.createElement('tr');
     row.className = entry.type === 'sale' ? 'ledger-sale' : 'ledger-purchase';
-    var cells = [entry.time || fmtT(entry.recordedAt), entry.type === 'sale' ? 'Sold' : 'Bought', entry.item, entry.quantity || '-', (entry.type === 'sale' ? '+' : '-') + ' ' + F(entry.amount) + ' kamas', entry.sourceCaptureIds && entry.sourceCaptureIds.length ? entry.sourceCaptureIds.join(', ') : 'Manual OCR'];
-    cells.forEach(function (value) {
-      var cell = document.createElement('td');
-      cell.textContent = value;
-      row.appendChild(cell);
+    function cell(node) { var td = document.createElement('td'); td.append(node); row.appendChild(td); return td; }
+    cell(entry.time || fmtT(entry.recordedAt));
+    var type = document.createElement('select');
+    [['purchase', 'Bought'], ['sale', 'Sold']].forEach(function (option) {
+      var o = document.createElement('option'); o.value = option[0]; o.textContent = option[1]; type.appendChild(o);
     });
+    type.value = entry.type;
+    type.addEventListener('change', function () { editLedger(entry.key, { type: type.value }).then(renderLedgerHistory); });
+    cell(type);
+    var item = document.createElement('input');
+    item.value = entry.item; item.setAttribute('aria-label', 'Item name');
+    item.addEventListener('change', function () {
+      if (!item.value.trim()) { item.value = entry.item; return; }
+      entry.item = item.value.trim();
+      editLedger(entry.key, { item: item.value });
+    });
+    var itemCell = cell(item);
+    if (entry.edited) { var tag = document.createElement('span'); tag.className = 'edited-tag'; tag.textContent = 'edited'; itemCell.appendChild(tag); }
+    var qty = document.createElement('input');
+    qty.className = 'num'; qty.value = entry.quantity || ''; qty.setAttribute('aria-label', 'Quantity'); qty.inputMode = 'numeric';
+    qty.addEventListener('change', function () { var n = Number(String(qty.value).replace(/\D/g, '')); editLedger(entry.key, { quantity: n > 0 ? n : null }); });
+    cell(qty);
+    var amount = document.createElement('input');
+    amount.className = 'num'; amount.value = entry.amount; amount.setAttribute('aria-label', 'Amount in kamas'); amount.inputMode = 'numeric';
+    amount.addEventListener('change', function () { var n = Number(String(amount.value).replace(/\D/g, '')); editLedger(entry.key, { amount: n }).then(function () { amount.value = n; }); });
+    cell(amount);
+    cell(entry.sourceCaptureIds && entry.sourceCaptureIds.length ? entry.sourceCaptureIds.join(', ') : 'Manual OCR');
+    var del = document.createElement('button');
+    del.type = 'button'; del.className = 'row-button'; del.textContent = '×'; del.title = 'Delete this entry'; del.setAttribute('aria-label', 'Delete this entry');
+    del.addEventListener('click', async function () {
+      if (!confirm('Delete this entry from the ledger?')) return;
+      ledgerHistory = removeLedgerEntry(ledgerHistory, entry.key);
+      await metaPut('ledger-history', ledgerHistory);
+      renderLedgerHistory();
+    });
+    cell(del);
     rows.appendChild(row);
   });
 }
@@ -1001,6 +1072,7 @@ function setIdx(idx) {
   if ($('log').value) runLog();
   craftRender();
   dataSearch();
+  if (itemsUi) itemsUi.render();
 }
 function setStat(t) { $('dstat').textContent = t; }
 async function loadFiles(files) {
@@ -1060,9 +1132,20 @@ async function finish(idx, warn) {
   $('dstat').innerHTML += (ok ? ' Saved in this browser.' : ' <span class="bad">Could not save in this browser, it will need loading again next time (use Export compact file).</span>') + (warn ? ' <span class="bad">' + esc(warn) + '</span>' : '');
 }
 async function dataClear() {
-  if (!confirm('Remove the saved game data from this browser?')) return;
-  await metaDel('index'); P = null; CRAFT = null; setStat('No data loaded.'); $('dres').innerHTML = ''; craftRender(); if ($('log').value) runLog();
+  if (!confirm('Remove the saved game data and go back to the data shipped with the app?')) return;
+  await metaDel('index');
+  location.reload();
 }
+async function resetEverything() {
+  if (!confirm('Erase ALL Kama Ledger data on this computer (items, ingredients, prices, ledger, captures, scan regions, settings) and start fresh? This cannot be undone.')) return;
+  try { if (DB) DB.close(); } catch (e) {}
+  await new Promise(function (res) {
+    try { var r = indexedDB.deleteDatabase('kama-ledger'); r.onsuccess = r.onerror = r.onblocked = function () { res(); }; } catch (e) { res(); }
+  });
+  try { localStorage.clear(); } catch (e) {}
+  location.reload();
+}
+window.resetEverything = resetEverything;
 function dataExport() {
   if (!P) { alert('Load data first.'); return; }
   var a = document.createElement('a');
@@ -1132,14 +1215,482 @@ $('bi').addEventListener('input', function () { fillList('bi', 'bdl'); });
 $('bi').addEventListener('change', fillBrisage);
 [['Vitalité', 216, 0.2, 1, ''], ['Force', 49, 1, 1, ''], ['Intelligence', 48, 1, 1, ''], ['Agilité', 48, 1, 1, ''], ['Sagesse', 26, 3, 3, ''], ['Dommages Feu', 10, 20, 20, ''], ['Prospection', 7, 3, 3, '']].forEach(addB);
 
-dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return loadUnclassifiedCaptures(); }).then(function () { return metaGet('index'); }).then(function (x) { if (x) setIdx(x); });
+var itemsUi = null;
+initTheme();
+itemsUi = initItems({
+  $: $, F: F, num: num, esc: esc, normName: normName, pickItem: pickItem,
+  getDB: function () { return DB; }, getP: function () { return P; }, metaGet: metaGet, metaPut: metaPut,
+  netP: netP, taxMode: function () { return $('rnd').value; },
+  fillList: fillList,
+  iconUrl: function (id) { var g = P && P.idx.icons && P.idx.icons[id]; return g ? 'https://api.dofusdu.de/dofus3/v1/img/item/' + g + '-64.png' : null; },
+  fetchImage: async function (url) { var b = window.kamaDesktopCapture; if (!b || !b.gameImage) return null; var r = await b.gameImage(url); return r && r.ok ? r.dataUrl : null; },
+  getOcrText: function () { return $('ocrtext').value; },
+  getBrisageValue: function () { return lastBriValue; },
+  openBrisage: function (name) { $('bi').value = name; fillBrisage(); show('bri'); }
+});
+dbOpen().then(function () { renderDB(); return loadLedgerHistory(); }).then(function () { return loadUnclassifiedCaptures(); }).then(function () { return metaGet('index'); }).then(async function (x) {
+  // The game data shipped with the app wins unless the saved copy is strictly newer: an older saved copy
+  // (from an earlier version of the app) used to hide the bundled data and caused wrong matches.
+  var bundled = null;
+  try { bundled = (await import('./data/kama-data.json')).default; } catch (e) { bundled = null; }
+  var usable = function (d) { return d && Array.isArray(d.items) && d.items.length > 1000 && d.types && d.effs; };
+  if (usable(bundled) && (!usable(x) || String(x.built || '') <= String(bundled.built || ''))) { x = bundled; metaPut('index', x); }
+  if (x) setIdx(x);
+  return itemsUi.load();
+});
 addRow(); addRow(); calcTax();
-var st = 'log';
-try { st = localStorage.tab || 'log'; } catch (e) {}
+var st = 'items';
+try { st = localStorage.tab || 'items'; } catch (e) {}
 show(st);
 
 window.$ = $;
 window.show = show;
+
+/* ---- game data update (current recipes, levels, new items, icons) ---- */
+var GD = 'https://api.dofusdu.de/dofus3/v1/fr/items/';
+async function gdJson(path) {
+  var r;
+  for (var tries = 0; tries < 4; tries++) {
+    r = await window.kamaDesktopCapture.gameJson(GD + path);
+    if (r && r.ok) break;
+    if (r && r.status && r.status !== 429 && r.status < 500) break;
+    await new Promise(function (res) { setTimeout(res, 600 * (tries + 1) * (tries + 1)); });
+  }
+  if (!r || !r.ok) { var e = new Error(r && r.status ? 'HTTP ' + r.status : (r && r.error) || 'no answer'); e.status = r && r.status; throw e; }
+  return r.json;
+}
+$('gd-update').addEventListener('click', async function () {
+  var b = window.kamaDesktopCapture, st = $('gd-status');
+  if (!b || !b.gameJson) { st.textContent = 'This works in the desktop app only (it needs internet access once).'; return; }
+  if (!P) { st.textContent = 'Load the game data first.'; return; }
+  this.disabled = true;
+  var all = [], notes = [], failed = [];
+  try {
+    for (var s = 0; s < SUBTYPES.length; s++) {
+      var sub = SUBTYPES[s], first;
+      try { first = await gdJson(sub + '?fields[item]=recipe&page[size]=100&page[number]=1'); } catch (e) { notes.push(sub + ': ' + (e.status === 404 ? 'not offered' : 'FAILED (' + e.message + ')')); if (e.status !== 404) failed.push(sub); continue; }
+      var got = pageItems(first).slice(), pages = lastPage(first), n = 2, done = false, err = null;
+      // Page count comes from the "last" link; if it is missing, keep going until a page comes back short.
+      while (!done && n <= Math.max(pages, 400)) {
+        var batch = [];
+        for (var q = 0; q < 4 && n <= Math.max(pages, 400); q++) batch.push(n++);
+        st.textContent = 'Downloading ' + sub + ' (page ' + batch[0] + (pages > 1 ? '/' + pages : '') + ')...';
+        var outs = await Promise.all(batch.map(async function (pg) {
+          try { return pageItems(await gdJson(sub + '?fields[item]=recipe&page[size]=100&page[number]=' + pg)); } catch (e) { if (e.status === 404 || e.status === 400) return []; err = e; return null; }
+        }));
+        if (outs.some(function (o) { return o === null; })) { failed.push(sub); notes.push(sub + ': stopped early (' + err.message + ')'); break; }
+        outs.forEach(function (o) { got = got.concat(o); if (o.length < 100) done = true; });
+        if (pages > 1 && n > pages) done = true;
+      }
+      all = all.concat(got); notes.push(sub + ' ' + got.length);
+    }
+    if (failed.length) throw new Error(failed.join(', ') + ' could not be downloaded completely (' + notes.join('; ') + '). Nothing was changed, try again in a minute');
+    if (all.length < 1000) throw new Error('only ' + all.length + ' items came back, so nothing was changed');
+    var withRecipe = all.filter(function (x) { return x && x.recipe && x.recipe.length; }).length;
+    if (withRecipe < 100) throw new Error('the service sent items without recipes (' + withRecipe + '), so nothing was changed');
+    var meta = null; try { meta = (await window.kamaDesktopCapture.gameJson('https://api.dofusdu.de/dofus3/v1/meta/version')).json; } catch (e) {}
+    var res = mergeIndex(P.idx, all, new Date().toISOString().slice(0, 10));
+    metaPut('index', res.idx); setIdx(res.idx);
+    st.textContent = 'Updated' + (meta && meta.version ? ' to game version ' + meta.version : '') + ': ' + res.stats.added + ' new items, ' + res.stats.recipeFixed + ' recipes changed (' + notes.join(', ') + '). Loading images...';
+    await itemsUi.fillIcons();
+    st.textContent = st.textContent.replace('Loading images...', 'Images loaded.');
+  } catch (e) { st.textContent = 'Update failed (nothing was changed): ' + e.message; }
+  this.disabled = false;
+});
+/* ---- scan profile: named regions drawn once, then one key press reads them all ---- */
+var PROFILE_TYPES = [
+  ['market', 'Market list (rows: image, name, level, average price)'],
+  ['popup', 'Lot popup (prices by lot)'],
+  ['chart', 'Cours du marché (articles vendus)'],
+  ['recipe', 'Recettes window (item to craft)'],
+  ['budget', 'Budget (kamas in inventory)'],
+  ['chat', 'Chat (purchases and sales)'],
+  ['tooltip', 'Item hover box (jets: clean roll or exo)']
+];
+var profile = {}, profileTarget = null, drawRect = null, scanning = false, stillFrame = null;
+try { profile = JSON.parse(localStorage.getItem('kl-profile') || '{}') || {}; } catch (e) { profile = {}; }
+function saveProfile() { try { localStorage.setItem('kl-profile', JSON.stringify(profile)); } catch (e) {} }
+function profileKeys() { return PROFILE_TYPES.map(function (t) { return t[0]; }).filter(function (k) { return profile[k]; }); }
+function showPreviewArea() { $('vw').style.display = 'block'; }
+function renderProfile() {
+  $('profile-list').innerHTML = PROFILE_TYPES.map(function (t) {
+    var set = !!profile[t[0]];
+    return '<div class="profile-row"><span class="swatch" data-k="' + t[0] + '"></span><span>' + esc(t[1]) + '</span><span class="mu">' + (set ? 'set' : 'not set') + '</span>'
+      + '<button class="btn" type="button" data-set="' + t[0] + '">' + (set ? 'Redraw' : 'Draw') + '</button>'
+      + (set ? '<button class="btn" type="button" data-clear="' + t[0] + '">Clear</button>' : '') + '</div>';
+  }).join('');
+  var boxes = $('pboxes'); boxes.innerHTML = '';
+  profileKeys().forEach(function (k, i) {
+    var r = profile[k], d = document.createElement('div');
+    d.className = 'pbox'; d.style.cssText = 'left:' + r.x * 100 + '%;top:' + r.y * 100 + '%;width:' + r.w * 100 + '%;height:' + r.h * 100 + '%;';
+    d.innerHTML = '<span>' + esc(k) + '</span>'; boxes.appendChild(d);
+  });
+}
+$('profile-list').addEventListener('click', function (e) {
+  var set = e.target.closest('[data-set]'), clr = e.target.closest('[data-clear]');
+  if (clr) { delete profile[clr.dataset.clear]; saveProfile(); renderProfile(); return; }
+  if (!set) return;
+  if (!stream && !stillFrame) { $('scan-status').textContent = 'Share the game window first, or load a screenshot to draw on.'; return; }
+  profileTarget = set.dataset.set; drawRect = null;
+  showPreviewArea();
+  $('ov').style.pointerEvents = 'auto';
+  $('scan-status').textContent = 'Drag a rectangle around the ' + profileTarget + ' area on the preview.';
+});
+function finishProfileRegion() {
+  var key = profileTarget; profileTarget = null;
+  $('rg').style.display = 'none';
+  if (drawRect && drawRect.w > 0.01 && drawRect.h > 0.01) {
+    profile[key] = { x: drawRect.x, y: drawRect.y, w: drawRect.w, h: drawRect.h };
+    saveProfile();
+    $('scan-status').textContent = key + ' region saved.';
+  }
+  renderProfile();
+}
+$('scan-still').addEventListener('change', function () {
+  var f = this.files && this.files[0]; this.value = '';
+  if (!f) return;
+  var r = new FileReader();
+  r.onload = function () {
+    scan.frameFromUrl(r.result).then(function (c) {
+      stillFrame = c; $('vid').poster = r.result; showPreviewArea();
+      $('scan-status').textContent = 'Screenshot loaded (' + c.width + 'x' + c.height + '). Draw your regions on it.';
+    });
+  };
+  r.readAsDataURL(f);
+});
+$('scan-file').addEventListener('change', async function () {
+  var files = [].slice.call(this.files); this.value = '';
+  for (var i = 0; i < files.length; i++) {
+    var url = await new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(files[i]); });
+    await scanFrame(await scan.frameFromUrl(url));
+  }
+});
+$('scan-now').addEventListener('click', function () { scanNow(); });
+function scanNow() {
+  var frame = stream ? scan.frameFromVideo($('vid')) : stillFrame;
+  if (!frame) { $('scan-status').textContent = 'Nothing to scan: share the game window first.'; return Promise.resolve(); }
+  return scanFrame(frame);
+}
+/* ---- diagnostics: one click, one small file; writes nothing to your lists ---- */
+var diagFrames = [];
+$('diag-files').addEventListener('change', async function () {
+  var files = [].slice.call(this.files); this.value = ''; diagFrames = [];
+  for (var i = 0; i < files.length; i++) {
+    var url = await new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(files[i]); });
+    diagFrames.push(await scan.frameFromUrl(url));
+  }
+  $('diag-status').textContent = diagFrames.length + ' screenshot(s) loaded. Click “Run diagnostics”.';
+});
+$('diag-run').addEventListener('click', async function () {
+  var btn = this, st = $('diag-status');
+  if (!P) { st.textContent = 'Load the game data first (Data tab).'; return; }
+  if (!stream && !diagFrames.length && !stillFrame) { st.textContent = 'Share the game window first (Start screen share), or choose screenshot file(s).'; return; }
+  if (scanning) { st.textContent = 'A scan is running, try again in a few seconds.'; return; }
+  btn.disabled = true; scanning = true;
+  try {
+    var plan = (await import('./diag-plan.js')).PLAN;
+    var res = await runDiagnostics({
+      P: P, snapItem: snapItem, parsePopup: parsePopup, parseLots: parseLots, parseBudget: parseBudget, appVersion: APP_BUILD,
+      includeChat: $('diag-chat').checked, status: function (t) { st.textContent = t; },
+      grab: async function (n) {
+        if (diagFrames.length) return diagFrames[n] || null;
+        if (stream) return scan.frameFromVideo($('vid'));
+        return stillFrame;
+      }
+    });
+    if (sess) res.session = sessReport(sess, Date.now(), APP_BUILD);
+    if (window.klPopups && window.klPopups.length) res.popups = window.klPopups;
+    if (window.klLastScan && window.klLastScan.tooltip) res.tooltip = window.klLastScan.tooltip;
+    var text = JSON.stringify(res);
+    var name = 'kama-diag-' + res.plan + '-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.json';
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name; a.click();
+    sessEvent({ type: 'diag', ms: res.totalMs });
+    st.textContent = 'Done in ' + (res.totalMs / 1000).toFixed(1) + ' s. File saved: ' + name + ' (' + Math.round(text.length / 1024) + ' KB). Send it to Claude.';
+  } catch (e) { st.textContent = 'Diagnostics failed: ' + e.message; }
+  scanning = false; btn.disabled = false;
+});
+
+/* ---- guided test session: the app ticks the steps off by itself while you do them in the game ---- */
+var sess = null, sessEl = null;
+function sessEvent(ev) {
+  if (!sess || sess.end) return;
+  var before = sess.step; sess.hint = '';
+  sessOn(sess, ev, Date.now());
+  renderSess();
+  if (sess.step !== before && SESS_STEPS[sess.step] && SESS_STEPS[sess.step].key === 'diag') setTimeout(sessAutoDiag, 1500);
+}
+function sessAutoDiag() {
+  if (!sess || sess.end || !SESS_STEPS[sess.step] || SESS_STEPS[sess.step].key !== 'diag') return;
+  if (scanning) { setTimeout(sessAutoDiag, 2000); return; }
+  $('diag-run').click();
+}
+function renderSess() {
+  if (!sess) { if (sessEl) sessEl.hidden = true; return; }
+  if (!sessEl) {
+    sessEl = document.createElement('aside'); sessEl.id = 'sess'; sessEl.setAttribute('aria-label', 'Guided test session');
+    sessEl.addEventListener('click', function (e) {
+      if (e.target.closest('[data-sess-stop]')) { sess = null; renderSess(); }
+      else if (e.target.closest('[data-sess-copy]')) { var t = sessReport(sess, Date.now(), APP_BUILD); try { navigator.clipboard.writeText(t); e.target.textContent = 'Copied'; } catch (err) {  } }
+    });
+    document.body.appendChild(sessEl);
+  }
+  sessEl.hidden = false;
+  var done = sess.done.length, cur = SESS_STEPS[sess.step];
+  var rows = SESS_STEPS.map(function (st, i) {
+    var d = sess.done[i], state = d ? 'ok' : i === sess.step ? 'now' : 'next';
+    return '<li class="' + state + '"><span class="sk">' + (d ? '✓' : i + 1) + '</span><span class="st">' + st.title + (d ? '<small>' + d.took.toFixed(1) + ' s' + (d.note ? ' · ' + d.note : '') + '</small>' : '') + '</span></li>';
+  }).join('');
+  sessEl.innerHTML = '<div class="sh"><b>Guided test</b><span>' + done + ' / ' + SESS_STEPS.length + '</span></div>' +
+    (cur ? '<div class="sn"><b>Now:</b> ' + cur.hint + (sess.hint ? '<br><em>' + sess.hint + '</em>' : '') + '</div>' : '<div class="sn"><b>All done.</b> The diagnostics file was saved: send it to Claude.</div>') +
+    '<ol>' + rows + '</ol><div class="sb">' + (sess.end ? '<button type="button" class="btn" data-sess-copy>Copy report</button>' : '') + '<button type="button" class="btn" data-sess-stop>' + (sess.end ? 'Close' : 'Stop') + '</button></div>';
+}
+$('sess-start').addEventListener('click', function () {
+  sess = newSession(Date.now()); renderSess();
+  if (stream) sessEvent({ type: 'share' });
+});
+/* ---- live scan: watches the shared window, scans each new screen once it has settled ---- */
+var liveTimer = null, liveLast = null, livePrev = null;
+async function liveTick() {
+  if (!$('live-scan').checked || !stream || scanning) return;
+  var frame = scan.frameFromVideo($('vid'));
+  if (!frame) return;
+  var sig = scan.signature(frame);
+  var moving = scan.sigDiff(sig, livePrev) > 2.5;   // still changing: wait until the picture holds still
+  livePrev = sig;
+  if (moving || scan.sigDiff(sig, liveLast) < 4) return;   // unchanged since the last scan
+  liveLast = sig;
+  var r = await scanFrame(frame);   // every frame is read on its own, nothing is merged between frames
+  if (r && r.empty) $('scan-status').textContent = 'Live scan on: waiting for a market, lot, recipe or chat panel...';
+}
+$('live-scan').addEventListener('change', function () {
+  clearInterval(liveTimer); liveLast = null; livePrev = null;
+  if (this.checked) {
+    if (!stream) { this.checked = false; $('scan-status').textContent = 'Share the game window first.'; return; }
+    liveTimer = setInterval(function () { liveTick().catch(function () {}); }, 1200);
+    $('scan-status').textContent = 'Live scan on.';
+  }
+  updateCaptureControls();
+});
+function bestNameInLines(lines, minScore) {
+  var best = null;
+  lines.slice(0, 10).forEach(function (l) {
+    var s = snapItem(P, l, NaN, '');
+    if (s && s.score >= minScore && (!best || s.score > best.score)) best = s;
+  });
+  return best;
+}
+async function scanFrame(frame) {
+  var tStart = performance.now();
+  if (scanning) { $('scan-status').textContent = 'A scan is already running.'; return; }
+  scanning = true;
+  var prof = profile, quick = false;
+  if (!profileKeys().length) {
+    // Same game window as the last scan: skip the slow full-screen detection and read the panels where they were.
+    prof = scan.cachedProfile(frame);
+    if (prof) { quick = true; window.klTiming = { detect: 0 }; }
+    else {
+      $('scan-status').textContent = 'Looking for the game panels...';
+      try { prof = await scan.autoDetect(frame); window.klTiming = { detect: Math.round(performance.now() - tStart) }; } catch (e) { scanning = false; $('scan-status').textContent = 'Could not read the screen: ' + e.message; return; }
+    }
+  }
+  var keys = PROFILE_TYPES.map(function (t) { return t[0]; }).filter(function (k) { return prof[k]; });
+  if (!keys.length) { scanning = false; $('scan-status').textContent = 'No game panel on screen (open the market, a lot, Recettes or the chat).'; return { empty: true }; }
+  var types = P ? Object.values(P.idx.types) : [];
+  $('scan-status').textContent = 'Scanning ' + keys.join(', ') + '...';
+  var marketBad = false, info = { market: null, popup: null, chat: false }, lastLots = null, lastPopupItem = null, lastAvg = 0, marks = [], nextHint = '';
+  async function readKey(k) {
+    var tk = performance.now();
+    try {
+      if (k === 'market') {
+        var m = await scan.readMarketList(frame, prof.market, types, prof._layout && prof._layout.market);
+        info.market = { rows: m.rows.length, cached: m.cached || 0 };
+        if (quick && !(m.rows.length && m.rows.filter(function (r) { return r.priceSure || r.nameConf >= 50; }).length * 2 >= m.rows.length)) { marketBad = true; return null; }   // the list is not where it was
+        var rows = m.rows.map(function (r) { var s = P ? snapItem(P, r.rawName, r.level, r.type) : null; return Object.assign({ a: s ? s.item : null, score: s ? s.score : 0, sim: s ? s.sim : 0 }, r); });
+        window.klLastScan = Object.assign(window.klLastScan || {}, { market: m.rows });
+        var cards = []; try { cards = scan.marketCards(frame, prof.market); } catch (e) { cards = []; }
+        if (cards.length) cards.forEach(function (c) { var hit = rows.find(function (r) { var f = r.cy / r.fh; return f > c.y && f < c.y + c.h; }); marks.push({ x: c.x, y: c.y, w: c.w, h: c.h, kind: hit && hit.a && hit.priceSure ? 'read' : 'look' }); });
+        if (cards.length) { var cph = cards.map(function (c) { return c.h; }).sort()[cards.length >> 1] * frame.height, c0 = cards[0], wr = (c0.x + c0.w) * frame.width + 0.23 * cph; marks.push({ x: (wr - 11.1 * cph) / frame.width, y: Math.max(0.01, c0.y - 1.96 * cph / frame.height), w: 11.1 * cph / frame.width, h: 0.03, kind: 'win' }); }   // the top edge of the market window (where Kamo may lie down)
+        if (!cards.length) rows.forEach(function (r) { if (r.bw) marks.push({ x: (r.bx + r.fw * 0.004) / r.fw, y: r.by / r.fh, w: (r.bw - r.fw * 0.008) / r.fw, h: r.bh / r.fh, kind: r.a && r.priceSure ? 'read' : 'look' }); });
+        var res = await itemsUi.applyMarket(rows);
+        try { var obs = itemsUi.observeMarket(rows); if (obs.length && kamoRef) kamoRef.observe(obs, (function () { try { return stream.getVideoTracks()[0].getSettings().displaySurface || ''; } catch (e) { return ''; } })()); } catch (e) { /* remarks are optional */ }
+        return ('Market ' + rows.length + ' rows: ' + res.staged + ' waiting for approval' + (res.auto ? ', ' + res.auto + ' registered' : '') + (res.review ? ' (' + res.review + ' need a look)' : '') + (res.skipped ? ', ' + res.skipped + ' without price' : '') + (res.ignored ? ', ' + res.ignored + ' unreadable ignored' : '') + (m.columnsFromHeader ? '' : ' (no header in the region, default columns used)'));
+      } else if (k === 'popup') {
+        var pl = await scan.readText(frame, prof.popup, 'white');
+        var pop = parsePopup(pl), lots = parseLots(pl.join('\n'), pop.avg);
+        if (!Object.keys(lots).length && !pop.avg) return quick ? null : 'Popup: could not read it';
+        window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
+        info.popup = { id: pop.name, lots: Object.keys(lots).length };
+        (window.klPopups = window.klPopups || []).push({ lines: pl, pop: pop, lots: lots, offers: lots.offers || null }); window.klPopups = window.klPopups.slice(-6);
+        var ps = P ? snapItem(P, pop.name, pop.level, pop.type) : null;
+        // name line missing or buried in noise: look for the name in any title line, then for the one item whose price is this average
+        if (P && !(ps && ps.score >= 0.9)) ps = bestNameInLines(pl, 0.85) || ps;
+        if (P && !(ps && ps.score >= 0.9)) { var byAvg = itemsUi.itemByAvg(pop.avg, pop.level); var ba = byAvg && P.idx.items.find(function (a) { return String(a[0]) === String(byAvg); }); if (ba) ps = { item: ba, score: 0.9, sim: 0.5 }; }
+        var pb = (prof._raw && prof._raw.popup) || prof.popup, pk = frame.width / 1534;   // the whole panel: the box starts at the item name, the panel is a little wider and taller
+        marks.push({ x: Math.max(0, pb.x - 77 * pk / frame.width), y: Math.max(0, pb.y - 40 * pk / frame.height), w: pb.w + 107 * pk / frame.width, h: pb.h + 52 * pk / frame.height, kind: 'read', label: Object.keys(lots).length + ' lot' + (Object.keys(lots).length === 1 ? '' : 's') });
+        lastLots = lots; lastAvg = pop.avg; lastPopupItem = ps && ps.score >= 0.9 ? ps.item : null;
+        var pr = await itemsUi.stagePopup({ a: ps && ps.score >= 0.9 ? ps.item : null, name: pop.name, level: pop.level, avg: pop.avg, lots: lots });
+        return (pr.ignored ? 'Popup: item not recognised, ignored' : 'Popup ' + pr.name + ': ' + pr.lots + ' lot price(s) ' + (pr.auto ? 'registered' : 'waiting for approval'));
+      } else if (k === 'tooltip') {
+        var tl = await scan.readText(frame, prof.tooltip, 'grey');
+        var tip = parseTooltip(tl);
+        if (!tip.found || !tip.stats.length) return null;
+        var tn = P ? bestNameInLines(tl, 0.85) : null, ti = tn ? tn.item : lastPopupItem;
+        if (!ti) return 'Hover box: item not recognised';
+        // the listing under the mouse: find its lit-up row, read just that row
+        var hb = prof.popup ? scan.hoveredBand(frame, prof.popup) : null, hline = hb ? await scan.readText(frame, hb, 'white') : [];
+        var hl = hb ? parseLots(hline.join('\n'), lastAvg).list : [], hp = hl.length && hl[0].size === 1 ? hl[0].total : null;
+        window.klLastScan = Object.assign(window.klLastScan || {}, { tooltip: { lines: tl, tip: tip, rowLine: hline, price: hp } });
+        info.tooltip = { name: ti[1], statut: tip.statut, price: hp };
+        var jr = await itemsUi.applyJet({ a: ti, tip: tip, price: hp });
+        marks.push({ x: prof.tooltip.x, y: prof.tooltip.y, w: prof.tooltip.w, h: prof.tooltip.h, kind: jr.modified ? 'look' : 'ok', label: jr.modified ? 'exo / forged' : 'clean roll' });
+        return 'Hover box ' + jr.name + ': ' + (jr.modified ? 'modified (' + jr.why + ')' + (hp ? ', ' + F(hp) + ' noted as a special price, hover the next listing' : '') : 'clean roll' + (jr.set ? ', price set to ' + F(hp) : hp ? '' : ', hover shows no listing price')) ;
+      } else if (k === 'chart') {
+        var cl = await scan.readText(frame, prof.chart, 'white');
+        var ch = parseMarketChart(cl), cn = P ? bestNameInLines(cl, 0.8) : null;
+        if (!cn) return 'Cours du marché: item name not recognised';
+        await itemsUi.applyChart({ a: cn.item, sold: ch.sold, avg: ch.avg, median: ch.median });
+        return ('Cours du marché ' + cn.item[1] + ': ' + (ch.sold !== null ? ch.sold + ' sold' : 'no “articles vendus” found'));
+      } else if (k === 'recipe') {
+        var rl = await scan.readText(frame, prof.recipe, 'white');
+        var rn = P ? bestNameInLines(rl, 0.85) : null;
+        if (!rn) return 'Recettes: item name not recognised';
+        var ar = await itemsUi.addItemRow(rn.item);
+        return ('Recettes: ' + ar.name + (ar.created ? ' added with ' + ar.ingredients + ' ingredients' : ' already listed'));
+      } else if (k === 'budget') {
+        var bv = parseBudget(await scan.readNumber(frame, prof.budget));
+        if (bv === null) return 'Budget: unreadable';
+        await itemsUi.setBudget(bv);
+        return ('Budget ' + F(bv));
+      } else if (k === 'chat') {
+        var cl2 = await scan.readText(frame, prof.chat, 'grey');
+        info.chat = true;
+        var tx = transactionLines(cl2.map(normalizeTransactionLine));
+        if (tx.length) await saveLedgerTransactions(tx, ['chat-' + new Date().toISOString().slice(0, 10)]);
+        return ('Chat: ' + tx.length + ' purchase/sale line(s) saved');
+      }
+    } catch (e) { return k + ': ' + e.message; } finally { (window.klTiming = window.klTiming || {})[k] = Math.round(performance.now() - tk); }
+  }
+  // the hover box needs the lots of the popup read in the same scan: it goes last
+  var readGroup = async function (ks) { var a = await Promise.all(ks.filter(function (k) { return k !== 'tooltip'; }).map(readKey)); if (ks.indexOf('tooltip') >= 0) a.push(await readKey('tooltip')); return a; };
+  var out = (await readGroup(keys)).filter(Boolean);
+  if (quick && marketBad) { scan.forgetProfile(); scanning = false; return scanFrame(frame); }   // layout changed: detect again, then read
+  scanning = false;
+  var text = out.join(' · ') + ' (' + ((performance.now() - tStart) / 1000).toFixed(1) + ' s)';
+  $('scan-status').textContent = 'Done. ' + text;
+  await itemsUi.logScan(text);
+  recordAction('scan');
+  sessEvent({ type: 'scan', ms: performance.now() - tStart, market: info.market, popup: info.popup, chat: info.chat });
+  // highlight what was read on the game screen, and say what to scan next
+  try {
+    nextHint = info.tooltip ? (info.tooltip.statut ? 'Forged one noted. Hover the next listing.' : 'Clean roll saved. Scroll the list or open the next item.') : info.popup ? 'Lots read. Hover the cheapest listing for its jets, or open the next item.' : info.market ? 'List read. Open an item to scan its lots.' : '';
+    if (kamoRef && kamoRef.marks) kamoRef.marks(marks, nextHint, (function () { try { return stream.getVideoTracks()[0].getSettings().displaySurface || ''; } catch (e) { return ''; } })(), frame.width, frame.height);
+  } catch (e) { /* highlights are optional */ }
+  // A quick scan did not look for new panels: do it now, out of the way, and read whatever has appeared (a popup that opened, say).
+  if (quick && !profileKeys().length && !refreshing) {
+    refreshing = true;
+    scan.autoDetect(frame).then(async function (np) {
+      var added = Object.keys(np).filter(function (k) { return !prof[k]; });
+      if (added.length && !scanning) { scanning = true; var p2 = prof; prof = np; var more = (await readGroup(added)).filter(Boolean); prof = p2; scanning = false; if (more.length) { $('scan-status').textContent = $('scan-status').textContent + ' · ' + more.join(' · '); try { if (kamoRef && kamoRef.marks) kamoRef.marks(marks, nextHint, (function () { try { return stream.getVideoTracks()[0].getSettings().displaySurface || ''; } catch (e) { return ''; } })(), frame.width, frame.height); } catch (e) { /* optional */ } } }
+    }).catch(function () {}).then(function () { refreshing = false; });
+  }
+}
+var refreshing = false;
+renderProfile();
+/* ---- capture hotkey (desktop app) ---- */
+var DEFAULT_HOTKEY = 'CommandOrControl+Shift+K';
+var hotkeyRecording = false;
+function hotkeyLabel(accelerator) { return String(accelerator || '').replace('CommandOrControl', 'Ctrl'); }
+function accelFromEvent(event) {
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].indexOf(event.key) >= 0) return null;
+  var key = event.key;
+  var names = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right' };
+  if (names[key]) key = names[key];
+  else if (key.length === 1) key = key.toUpperCase();
+  if (!/^([A-Z0-9]|F([1-9]|1\d|2[0-4])|Space|Up|Down|Left|Right|Tab|Enter|Backspace|Insert|Delete|Home|End|PageUp|PageDown)$/.test(key)) return null;
+  var mods = [];
+  if (event.ctrlKey || event.metaKey) mods.push('CommandOrControl');
+  if (event.altKey) mods.push('Alt');
+  if (event.shiftKey) mods.push('Shift');
+  if (!mods.length && !/^F\d/.test(key)) return null;
+  return mods.concat(key).join('+');
+}
+function beep() {
+  if (!$('beep').checked) return;
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.frequency.value = 880; gain.gain.value = 0.06;
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.09);
+    osc.onended = function () { ctx.close(); };
+  } catch (e) {}
+}
+function hotkeyCapture() {
+  if (profileKeys().length || stream || stillFrame) { beep(); return scanNow(); }
+  if (!stream) { $('hotkey-status').textContent = 'Hotkey pressed, but no screen or window is being shared yet. Share the game window first.'; return Promise.resolve(null); }
+  var canvas = grab();
+  if (!canvas) { $('hotkey-status').textContent = 'The shared window has no picture yet.'; return Promise.resolve(null); }
+  recordAction('hotkey');
+  return push(canvas.toDataURL('image/png'), 'hotkey').then(function (id) {
+    beep();
+    $('hotkey-status').textContent = 'Captured' + (id != null ? ' #' + id : '') + ' at ' + new Date().toLocaleTimeString() + '. Queue: ' + Q.length;
+    return id;
+  });
+}
+async function applyHotkey(accelerator) {
+  var bridge = window.kamaDesktopCapture;
+  var result = await bridge.setHotkey(accelerator);
+  if (result && result.ok) {
+    try { localStorage.setItem('kl-hotkey', accelerator); } catch (e) {}
+    $('hotkey').value = hotkeyLabel(accelerator);
+    $('hotkey-status').textContent = 'Hotkey set to ' + hotkeyLabel(accelerator) + '. It is active while a screen or window is shared; press it in the game to capture.';
+    return true;
+  }
+  $('hotkey-status').textContent = (result && result.reason) || 'Could not set that hotkey.';
+  return false;
+}
+function initHotkey() {
+  var bridge = window.kamaDesktopCapture;
+  if (!bridge || !bridge.setHotkey) {
+    $('hotkey').value = 'Esc';
+    $('hotkey-set').disabled = true;
+    $('hotkey-status').textContent = 'A hotkey that works inside the game needs the desktop app. In a browser, Esc captures while this page is focused.';
+    return;
+  }
+  if (bridge.onHotkey) bridge.onHotkey(function () { hotkeyCapture(); });
+  var saved = DEFAULT_HOTKEY;
+  try { saved = localStorage.getItem('kl-hotkey') || DEFAULT_HOTKEY; } catch (e) {}
+  $('hotkey').value = hotkeyLabel(saved);
+  applyHotkey(saved).then(function (ok) {
+    if (!ok && saved !== DEFAULT_HOTKEY) applyHotkey(DEFAULT_HOTKEY);
+  });
+  $('hotkey-set').addEventListener('click', function () {
+    hotkeyRecording = true;
+    $('hotkey').classList.add('recording');
+    $('hotkey').value = 'Press the new keys...';
+    $('hotkey-status').textContent = 'Press the key or combination you want. Esc cancels.';
+  });
+  document.addEventListener('keydown', async function (event) {
+    if (!hotkeyRecording) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      hotkeyRecording = false;
+      $('hotkey').classList.remove('recording');
+      try { $('hotkey').value = hotkeyLabel(localStorage.getItem('kl-hotkey') || DEFAULT_HOTKEY); } catch (e) {}
+      $('hotkey-status').textContent = '';
+      return;
+    }
+    var accelerator = accelFromEvent(event);
+    if (!accelerator) { $('hotkey-status').textContent = 'Use a function key (F1-F24) or Ctrl/Alt/Shift plus a key.'; return; }
+    hotkeyRecording = false;
+    $('hotkey').classList.remove('recording');
+    var ok = await applyHotkey(accelerator);
+    if (!ok) { try { $('hotkey').value = hotkeyLabel(localStorage.getItem('kl-hotkey') || DEFAULT_HOTKEY); } catch (e) {} }
+  }, true);
+}
+initHotkey();
+
 window.runLog = runLog;
 window.addRow = addRow;
 window.addB = addB;
@@ -1178,3 +1729,18 @@ window.fillBrisage = fillBrisage;
 window.loadTess = loadTess;
 window.getPrices = getPrices;
 window.craftRender = craftRender;
+
+kamoRef = initKamo({
+  getState: function () { var t = ''; try { t = localStorage.tab || ''; } catch (e) {} return { stream: !!stream, scanning: scanning, live: $('live-scan').checked, tab: t }; },
+  items: itemsUi,
+  actions: {
+    share: function () { toggleShare(); },
+    scan: function () { show('cap'); $('scan-now').click(); },
+    show: function () { show('items'); var r = $('items-review'); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
+    add: function () { show('items'); $('items-add').focus(); },
+    scanTab: function () { show('cap'); },
+    scanQuiet: function () { $('scan-now').click(); },   // used by Kamo when your prices are old and you are away: read-only, results still wait for approval
+    best: function (id) { show('items'); itemsUi.openGraph(id); },
+  },
+});
+window.klKamo = kamoRef;

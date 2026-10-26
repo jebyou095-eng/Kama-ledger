@@ -4,3 +4,7 @@ release/
 *.log
 .DS_Store
 Thumbs.db
+# live voice engine (optional, ~90 MB, shipped separately) and its wasm copy
+voice-engine/
+public/voice-engine/
+public/ort/
