@@ -121,6 +121,12 @@
           <div class="row"><label class="btn">Load a screenshot to draw on…<input id="scan-still" type="file" accept="image/*" hidden></label></div>
         </details>
         <details class="card fold">
+          <summary>Performance check</summary>
+          <p class="mu">Measures smoothness for about 15 seconds (normal, Kamo hidden, animations paused) and tells you what costs the most. Runs only when you press the button; nothing leaves your computer.</p>
+          <div class="row"><button class="btn primary-button" id="perf-run" type="button">Check performance</button><button class="btn" id="perf-save" type="button" hidden>Save report file</button><span id="perf-status" class="mu" aria-live="polite"></span></div>
+          <pre id="perf-out" class="mu" style="white-space:pre-wrap"></pre>
+        </details>
+        <details class="card fold">
           <summary>Diagnostics for Claude</summary>
           <div class="row diag-row"><button class="btn primary-button" id="diag-run" type="button">Run diagnostics (makes a small file to send to Claude)</button><label class="btn">…or test screenshot file(s)<input id="diag-files" type="file" accept="image/*" multiple hidden></label><label class="chk"><input type="checkbox" id="diag-chat"> include the chat area (may show player names)</label><span id="diag-status" class="mu" aria-live="polite"></span></div>
         </details>

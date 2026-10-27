@@ -1410,6 +1410,25 @@ $('diag-run').addEventListener('click', async function () {
   scanning = false; btn.disabled = false;
 });
 
+/* ---- performance evaluator: separate module, runs only on the button ---- */
+var perfLast = null;
+$('perf-run').addEventListener('click', async function () {
+  var btn = this, st = $('perf-status'), out = $('perf-out'); btn.disabled = true; out.textContent = '';
+  try {
+    var P = await import('./perf.js');
+    perfLast = await P.runPerf({ seconds: 4, status: function (t) { st.textContent = t; }, kamoEl: document.querySelector('.kamo'), info: function () { return { scanning: !!scanning }; } });
+    var r = perfLast.result, tag = { smooth: 'SMOOTH', ok: 'OK, small hiccups', laggy: 'LAGGY' }[r.verdict];
+    out.textContent = 'Verdict: ' + tag + '\n' + r.findings.map(function (x) { return '• ' + x; }).join('\n') + (r.tips.length ? '\n\nWhat to do:\n' + r.tips.map(function (x) { return '→ ' + x; }).join('\n') : '');
+    st.textContent = 'Done.'; $('perf-save').hidden = false;
+  } catch (e) { st.textContent = 'Check failed: ' + e.message; }
+  btn.disabled = false;
+});
+$('perf-save').addEventListener('click', function () {
+  if (!perfLast) return;
+  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(Object.assign({ build: APP_BUILD }, perfLast), null, 1)], { type: 'application/json' }));
+  a.download = 'kama-perf-' + perfLast.at.replace(/[:.]/g, '-').slice(0, 19) + '.json'; a.click();
+});
+
 /* ---- guided test session: the app ticks the steps off by itself while you do them in the game ---- */
 var sess = null, sessEl = null;
 function sessEvent(ev) {
