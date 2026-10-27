@@ -22,6 +22,12 @@ if not exist "node_modules\electron\dist\electron.exe" (
   pause
   exit /b 1
 )
+rem Kamo's live voice engine (about 90 MB, downloaded once). If it fails, Kamo still talks with his recorded voice.
+if not exist "voice-engine\kokoro.int8.onnx.part3" if not exist "voice-engine\kokoro.int8.onnx" (
+  echo Downloading Kamo's voice engine, about 90 MB, once...
+  if not exist voice-engine mkdir voice-engine
+  powershell -NoProfile -Command "$ErrorActionPreference='Stop'; try { foreach($i in 1,2,3){ Invoke-WebRequest -UseBasicParsing -Uri ('https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part'+$i) -OutFile ('voice-engine\kokoro.int8.onnx.dl'+$i) }; foreach($i in 1,2,3){ Move-Item -Force ('voice-engine\kokoro.int8.onnx.dl'+$i) ('voice-engine\kokoro.int8.onnx.part'+$i) } } catch { Write-Host 'Voice engine download failed; Kamo will use his recorded voice.'; Remove-Item 'voice-engine\*.dl*' -ErrorAction SilentlyContinue }"
+)
 call npm run build > build-log.txt 2>&1
 if errorlevel 1 (
   echo The build failed. Repairing the installation once, needs internet, takes a few minutes...
