@@ -1,4 +1,4 @@
-# Kama Ledger — handoff for the next session (state at build v50)
+# Kama Ledger — handoff for the next session (state at build v51)
 
 Paste or point the new session at this file. It says where the project stands and what to build next.
 
@@ -22,6 +22,14 @@ Paste or point the new session at this file. It says where the project stands an
 2. Ctrl+Alt+K ask box, dragging/clicking Kamo, shake-to-dizzy.
 3. Live voice engine inside Electron (IPC model load, speed on his iGPU) and lip-sync.
 4. Claude Desktop showing the `kamo_*` tools after restart.
+
+## Step 1 of the Brain Stack: DONE in v51
+- `kamo.js`: order is rules → notebook → free cloud (Groq, then SambaNova, Gemini) → friend (Claude file protocol) → "curious" line. Old `kl-kamo-kb` answers migrate once into the notebook (`kl-kamo-nb`). Answers from Claude without a question are learned too.
+- `src/kamo-cloud.js` (prompt builder with only the items the question names, cascade, 429 cooldown, bad-key skip) + Electron IPC `brain:chat` (fixed hosts only, key never logged) + `brainChat` in `preload.js`.
+- Kamo menu → "Kamo's brain (free cloud)": provider, key, model, Test, Report card. Typing "report card" also shows it.
+- 👍/👎 on notebook/cloud/friend answers; 👎 → "What should I have said?" → next message is stored with `correct()`. Answers that depend on prices expire after 12 h (`exp` in notebook entries); corrections never expire.
+- Tests: `tests/kamo-cloud.cjs` added to `npm test`. Page wiring was smoke-tested in headless Chromium with a fake bridge; the real Groq call is NOT verified yet (needs his key).
+- Next: Step 2 below.
 
 ## The plan: "Kamo Brain Stack" (agreed with the user)
 Goal: free, works without Claude Desktop, gets smarter over time at *his* market. Tiers, in order, stop at the first that answers:

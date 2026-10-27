@@ -43,7 +43,7 @@ export function createNotebook(io) {
     const qv = vectorize(q); if (qv.count < 2) return null;
     let top = null;
     data.entries.forEach((e) => {
-      if (e.off || !sameItems(e.items, items) || numbersOf(e.q) !== numbersOf(q)) return;
+      if (e.off || (e.exp && e.exp < Date.now()) || !sameItems(e.items, items) || numbersOf(e.q) !== numbersOf(q)) return;
       const s = cosine(qv, vec(e));
       if (s >= min && (!top || s > top.score || (s === top.score && (TRUST[e.src] || 0) > (TRUST[top.entry.src] || 0)))) top = { score: s, entry: e };
     });
@@ -56,11 +56,12 @@ export function createNotebook(io) {
       const t = best(q, items || [], min || 0.72); if (!t) return null;
       t.entry.hits = (t.entry.hits || 0) + 1; t.entry.last = Date.now(); save(); return t;
     },
-    learn(q, a, src, items, now) {
+    // ttl (ms): an answer that depends on today's prices is only kept for a while.
+    learn(q, a, src, items, now, ttl) {
       q = String(q || '').trim().slice(0, 300); a = String(a || '').trim().slice(0, 700); if (!q || !a) return null;
       const t = best(q, items || [], 0.9), at = now || Date.now();
-      if (t) { if ((TRUST[src] || 0) >= (TRUST[t.entry.src] || 0)) { t.entry.a = a; t.entry.src = src; t.entry.at = at; t.entry.off = false; save(); } return t.entry; }
-      const e = { id: 'n' + at.toString(36) + Math.floor(Math.random() * 1e4).toString(36), q, a, src: src || 'cloud', items: (items || []).slice(), at, last: at, hits: 0, up: 0, down: 0 };
+      if (t) { if ((TRUST[src] || 0) >= (TRUST[t.entry.src] || 0)) { t.entry.a = a; t.entry.src = src; t.entry.at = at; t.entry.off = false; t.entry.exp = ttl ? at + ttl : 0; save(); } return t.entry; }
+      const e = { id: 'n' + at.toString(36) + Math.floor(Math.random() * 1e4).toString(36), q, a, src: src || 'cloud', items: (items || []).slice(), at, last: at, hits: 0, up: 0, down: 0, exp: ttl ? at + ttl : 0 };
       data.entries.push(e);
       if (data.entries.length > MAX) { data.entries.sort((x, y) => worth(y) - worth(x) || (y.last || 0) - (x.last || 0)); data.entries.length = MAX; }
       save(); return e;
@@ -73,7 +74,7 @@ export function createNotebook(io) {
     // You said what the answer should have been: that wins over everything.
     correct(id, a) {
       const e = data.entries.find((x) => x.id === id); if (!e) return null;
-      e.a = String(a).trim().slice(0, 700); e.src = 'user'; e.off = false; e.down = 0; e.at = Date.now(); this.count('corrections'); save(); return e;
+      e.a = String(a).trim().slice(0, 700); e.src = 'user'; e.exp = 0; e.off = false; e.down = 0; e.at = Date.now(); this.count('corrections'); save(); return e;
     },
     forget(id) { data.entries = data.entries.filter((x) => x.id !== id); save(); },
     clear() { data = { v: 1, entries: [], count: data.count }; save(); },

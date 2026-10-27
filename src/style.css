@@ -763,3 +763,10 @@ body.overlay main { display: none; }
 .kamo.talking.lip .k-m { animation: none; transform: scaleY(calc(.55 + var(--mouth, 0) * 1.5)); transition: transform 50ms linear; }
 .kamo.talking.lip:not(.walking):not(.dancing) .k-body { animation: none; transform: scale(calc(1 + var(--mouth, 0) * .035), calc(1 - var(--mouth, 0) * .045)); transition: transform 50ms linear; transform-origin: 0 90px; transform-box: view-box; }
 .kamo.talking.lip .k-arm-l, .kamo.talking.lip .k-arm-r { transition: transform 80ms linear; }
+
+.kamo-brainbox { border-top: 1px solid var(--bd); padding-top: 8px; display: grid; gap: 8px; }
+.kamo-brainbox summary { cursor: pointer; font-weight: 600; }
+.kamo-brainbox input { width: 150px; }
+.kamo-brainbox .kb-hint { margin: 0; font-size: 12px; opacity: .75; }
+.kamo-brainbox .kb-row { display: flex; gap: 8px; align-items: center; }
+#kamo-test-out { font-size: 12px; }

@@ -22,7 +22,15 @@
           <label class="theme-pick kamo-tog" title="Kamo clicks buttons and types in this app for you. He never touches the game."><input type="checkbox" id="kamo-hands"> Kamo's hands</label>
           <label class="theme-pick kamo-tog" title="Kamo floats over your screen to point things out and give advice. He only watches and talks; he never clicks or types in the game."><input type="checkbox" id="kamo-outside"> Kamo outside the app</label>
           <label class="theme-pick" title="His sound: little chirps for each word, or a spoken voice from your system.">Sound <select id="kamo-sound"><option value="voice">Kamo's voice</option><option value="babble">Cute chirps</option><option value="speak">Speak (system voice)</option><option value="off">Silent</option></select></label>
-          <label class="theme-pick">Voice <select id="kamo-voice"><option value="merchant">Cheerful merchant</option><option value="sassy">Sassy sidekick</option><option value="sage">Calm trader</option></select></label></div></details>
+          <label class="theme-pick">Voice <select id="kamo-voice"><option value="merchant">Cheerful merchant</option><option value="sassy">Sassy sidekick</option><option value="sage">Calm trader</option></select></label>
+          <details class="kamo-brainbox"><summary>Kamo's brain (free cloud)</summary>
+            <p class="kb-hint">Paste your own free key. It stays on this computer. Only your question and a few numbers about the items you name are sent, never your ledger.</p>
+            <label class="theme-pick">Provider <select id="kamo-prov"></select></label>
+            <label class="theme-pick">Key <input id="kamo-key" type="password" autocomplete="off" spellcheck="false" placeholder="paste key"></label>
+            <label class="theme-pick">Model <input id="kamo-model" type="text" autocomplete="off" spellcheck="false"></label>
+            <div class="kb-row"><button class="btn" id="kamo-test" type="button">Test</button><span id="kamo-test-out" role="status"></span></div>
+            <p class="kb-hint" id="kamo-key-help"></p>
+            <button class="btn" id="kamo-card" type="button">Report card</button></details></div></details>
           <label class="theme-pick">Theme <select id="theme-sel"><option value="navy">Night navy</option><option value="game">Game brown</option><option value="light">Bright lime</option></select></label>
           <button class="btn" id="global-share-toggle" type="button" onclick="toggleShare()">Start screen share</button>
           <button class="btn" id="global-auto-toggle" type="button" onclick="toggleAuto()" disabled>Auto capture off</button>

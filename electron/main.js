@@ -97,6 +97,28 @@ ipcMain.handle('friend:write', (_e, json) => {
 ipcMain.handle('friend:read', () => {
   try { const f = join(app.getPath('userData'), 'kama-answers.json'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; } catch { return ''; }
 });
+// Kamo's free-cloud tier: the page sends a provider id, the player's own key and a tiny prompt; only these fixed hosts can be reached,
+// so the key can never be sent anywhere else. The key is never logged.
+const BRAIN_URLS = {
+  groq: 'https://api.groq.com/openai/v1/chat/completions',
+  sambanova: 'https://api.sambanova.ai/v1/chat/completions',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+};
+ipcMain.handle('brain:chat', async (_e, req) => {
+  const url = req && BRAIN_URLS[req.provider];
+  const key = req && typeof req.key === 'string' ? req.key.trim() : '', model = req && typeof req.model === 'string' ? req.model.trim() : '';
+  const msgs = req && Array.isArray(req.messages) ? req.messages : [];
+  if (!url || key.length < 8 || key.length > 400 || !/^[\w.:\/-]{1,90}$/.test(model) || !msgs.length || msgs.length > 3) return { ok: false, error: 'bad request' };
+  const messages = msgs.map((m) => ({ role: m && m.role === 'system' ? 'system' : 'user', content: String(m && m.content || '').slice(0, 2500) }));
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await net.fetch(url, { method: 'POST', redirect: 'error', signal: ctl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ model, messages, max_tokens: 220, temperature: 0.4 }) });
+    if (!r.ok) return { ok: false, status: r.status, retryAfter: Number(r.headers.get('retry-after')) || 0 };
+    const j = await r.json(), text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    return text ? { ok: true, text: String(text) } : { ok: false, error: 'empty answer' };
+  } catch (error) { logLine(`brain:chat ${req.provider}: ${error && error.name === 'AbortError' ? 'timeout' : 'network error'}`); return { ok: false, error: error && error.name === 'AbortError' ? 'timeout' : 'network error' }; }
+  finally { clearTimeout(timer); }
+});
 ipcMain.handle('hotkey:set', (_event, accelerator) => {
   if (!validHotkey(accelerator)) return { ok: false, reason: 'Use a function key (F1-F24) or a combination with Ctrl, Alt or Shift.' };
   if (accelerator !== registeredHotkey) {

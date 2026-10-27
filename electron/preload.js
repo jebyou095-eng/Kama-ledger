@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('kamaDesktopCapture', {
   gameImage: (url) => ipcRenderer.invoke('gamedata:image', url),
   friendWrite: (json) => ipcRenderer.invoke('friend:write', json),
   friendRead: () => ipcRenderer.invoke('friend:read'),
+  brainChat: (req) => ipcRenderer.invoke('brain:chat', req),
   saveSnapshot: (json) => ipcRenderer.invoke('mcp:snapshot', json),
   setHotkey: (accelerator) => ipcRenderer.invoke('hotkey:set', accelerator),
   onHotkey: (callback) => {

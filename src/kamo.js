@@ -6,7 +6,9 @@ import { createMover } from './kamo-motion.js';
 import { analyzeItem, explainCompare, explainTrend, explainWorth, learnQuestion, parseAsk, questionKey, watched } from './kamo-ai.js';
 import { createSound, envOf } from './kamo-sound.js';
 import { LIES } from './kamo-motion.js';
-import { applyAnswers, kbMatch, newQuestion, shouldAsk } from './kamo-friend.js';
+import { applyAnswers, newQuestion, shouldAsk } from './kamo-friend.js';
+import { createNotebook } from './kamo-notebook.js';
+import { PROVIDERS, createCascade, pickContext } from './kamo-cloud.js';
 import { VOICES, analyzeHabits, analyzeMarket, createVoice, curiousHint, dayKey, fmt, normalizeMem, planNext, recapVars, tabName, tabTip, understand } from './kamo-brain.js';
 
 export const SVG = `
@@ -256,18 +258,50 @@ export function initKamo(o) {
     rv.best = sm.best ? talk.say('recapBest', { name: sm.best.name, profit: sm.best.profit }) : '';
     return talk.say('recap', rv);
   }
-  // ---- "Wait a minute, I will ask a friend": what he cannot answer goes to Claude through the connector, the answer comes back here ----
-  let friendKb = readJson('kl-kamo-kb', []);
+  // ---- his notebook: every answer from a higher tier is kept here, so he never asks the same thing twice ----
+  const nb = createNotebook({ load: () => store('kl-kamo-nb') || '', save: (t) => store('kl-kamo-nb', t) });
   const fr = () => (mem.friend && mem.friend.open ? mem.friend : (mem.friend = { open: {}, seen: [], nudged: {} }));
+  if (store('kl-kamo-nb-mig') !== '1') {   // the older list of taught answers moves into the notebook once
+    let top = 0; readJson('kl-kamo-kb', []).forEach((e) => { if (e && e.q && e.answer) { nb.learn(e.q, e.answer, 'friend', [], e.at || now()); top = Math.max(top, e.at || 0); } });
+    fr().kbAt = Math.max(fr().kbAt || 0, top); saveMem(); store('kl-kamo-nb-mig', '1');
+  }
+  // ---- the free cloud tier (Groq first): the HTTP call is made by the desktop app, with the key you pasted in the Kamo menu ----
+  const cbridge = () => (bridge && bridge.brainChat ? bridge : null);
+  const cloudCfg = () => { const c = readJson('kl-kamo-cloud', {}); return { keys: (c && c.keys) || {}, models: (c && c.models) || {} }; };
+  const cloud = createCascade((req) => (cbridge() ? cbridge().brainChat(req) : Promise.resolve({ ok: false, error: 'only in the desktop app' })));
+  // only the items the question names, a few numbers each: never the whole ledger
+  const ctxFor = (raw) => pickContext(raw, o.items.snapshot ? o.items.snapshot() : [], (r) => analyzeItem(r, now()), (r) => { const i = o.items.lookup(r.name); return i ? { cost: i.cost, profit: i.profit } : null; });
+  const ttlFor = (ctx) => (ctx.ids.length ? 12 * 3600000 : 0);   // an answer about today's prices is only kept for half a day
+  // 👍 / 👎: a 👎 makes him ask what he should have said, and the next thing you type becomes the answer (it beats every other source)
+  let pendingFix = null;
+  const rate = (id) => [
+    { label: '👍', run: () => { nb.vote(id, true); say('Thank you! I will trust that answer more.', 'happy', 3000, []); } },
+    { label: '👎', run: () => { nb.vote(id, false); pendingFix = { id, at: now() }; say('Oops! What should I have said? Type it below and I will remember it.', 'sad', 40000, [{ label: 'Never mind', run: () => { pendingFix = null; say('Okay!', 'idle', 2000, []); } }]); } },
+  ];
+  function cardText() {
+    const s = nb.stats(), c = s.count, asked = c.asked || 0, n = (k) => c[k] || 0;
+    const rows = ['Questions asked: ' + asked, 'Answered by my rules: ' + n('rules'), 'From my notebook: ' + n('notebook'), 'From the cloud: ' + n('cloud'), 'From my friend (Claude): ' + n('friend'), 'Could not answer: ' + n('curious'),
+      '👍 ' + n('up') + '   👎 ' + n('down') + '   Corrections: ' + n('corrections'), 'Notebook: ' + s.size + ' answers (' + s.by.user + ' yours, ' + s.by.friend + ' friend, ' + s.by.cloud + ' cloud)'];
+    if (asked) rows.push('Answered by myself: ' + Math.round(((n('rules') + n('notebook')) * 100) / asked) + '%');
+    return rows.join('\n');
+  }
+
+  // ---- "Wait a minute, I will ask a friend": what he cannot answer goes to Claude through the connector, the answer comes back here ----
   const fbridge = () => (typeof window !== 'undefined' && window.kamaDesktopCapture && window.kamaDesktopCapture.friendWrite ? window.kamaDesktopCapture : null);
   const pushQuestions = () => { const b = fbridge(); if (b) b.friendWrite(JSON.stringify({ v: 1, questions: Object.entries(fr().open).map(([id, v]) => ({ id, q: v.q, at: v.at })) })); };
   let friendTimer = 0;
   async function pollFriend() {
     const b = fbridge(); if (!b) return;
     let data = null; try { const t = await b.friendRead(); data = t ? JSON.parse(t) : null; } catch { data = null; }
-    const f = fr(), r = applyAnswers(f.open, data, f.seen);
-    if (r.kb.length) { friendKb = r.kb; store('kl-kamo-kb', JSON.stringify(friendKb)); }
-    r.say.forEach((a, i) => { f.seen.push(a.id); setTimeout(() => say(a.text, 'happy', 16000, []), i * 400); });
+    const f = fr(), asked = { ...f.open }, r = applyAnswers(f.open, data, f.seen), got = new Set(r.say.map((a) => a.id));
+    const fresh = r.kb.filter((k) => !got.has(k.id) && (k.at || 0) > (f.kbAt || 0));   // things Claude taught him without being asked
+    if (fresh.length) { fresh.forEach((k) => nb.learn(k.q, k.answer, 'friend', [], k.at)); f.kbAt = Math.max(...fresh.map((k) => k.at || 0)); saveMem(); }
+    r.say.forEach((a, i) => {
+      f.seen.push(a.id);
+      let acts = []; const q = asked[a.id] && asked[a.id].q;
+      if (q) { const c = ctxFor(q), e = nb.learn(q, a.text, 'friend', c.ids, now(), ttlFor(c)); nb.count('friend'); if (e) acts = rate(e.id); }
+      setTimeout(() => say(a.text, 'happy', 16000, acts), i * 400);
+    });
     if (r.say.length) { f.open = r.open; f.seen = f.seen.slice(-80); saveMem(); pushQuestions(); }
     Object.entries(f.open).forEach(([id, v]) => {
       if (now() - v.at > 4 * 60000 && !f.nudged[id]) { f.nudged[id] = 1; saveMem(); say('My friend has not answered yet. Open Claude and tell it: check Kamo\'s questions.', 'think', 14000, [{ label: 'Copy that for me', run: () => { try { navigator.clipboard.writeText('Check Kamo\'s questions and answer them.'); say('Copied! Paste it in Claude.', 'happy', 3500); } catch { /* clipboard not available */ } } }]); }
@@ -276,12 +310,25 @@ export function initKamo(o) {
     if (!Object.keys(f.open).length) { clearInterval(friendTimer); friendTimer = 0; }
   }
   const startFriendPoll = () => { if (!friendTimer) friendTimer = setInterval(() => { pollFriend().catch(() => {}); }, 5000); };
-  // The answer to something he does not know: a taught answer, or "wait a minute" and ask the friend.
+  function askFriendFile(raw) { const q = newQuestion(raw, now()); fr().open[q.id] = { q: q.q, at: q.at }; saveMem(); pushQuestions(); startFriendPoll(); }
+  // The cloud tier: ask the free model; keep its answer; if it fails, the friend (Claude) is next, then the "curious" line.
+  async function askCloud(raw, ctx, fallback) {
+    const r = await cloud.ask(raw, ctx, cloudCfg());
+    if (r.ok) { const e = nb.learn(raw, r.text, 'cloud', ctx.ids, now(), ttlFor(ctx)); nb.count('cloud'); say(r.text, 'happy', 22000, e ? rate(e.id) : []); return; }
+    if (fbridge() && shouldAsk(raw)) { askFriendFile(raw); return; }
+    nb.count('curious');
+    const bad = (r.tried || []).some((t) => t.status === 401 || t.status === 403), f = fallback();
+    say(bad ? 'My cloud key was refused. Check it in the Kamo menu.' : f.msg, bad ? 'sad' : f.m, 12000, bad ? [] : f.acts);
+  }
+  // The answer to something he does not know: his notebook, else the free cloud, else a friend (Claude), else the "curious" line.
+  let tier = '';
   function friendAnswer(raw, fallback) {
-    const hit = kbMatch(friendKb, raw);
-    if (hit) return { msg: hit.answer + '\n(My friend told me this before.)', m: 'happy', acts: [] };
-    if (!fbridge() || !shouldAsk(raw)) return fallback();
-    const q = newQuestion(raw, now()); fr().open[q.id] = { q: q.q, at: q.at }; saveMem(); pushQuestions(); startFriendPoll();
+    const ctx = ctxFor(raw), hit = nb.lookup(raw, ctx.ids);
+    if (hit) { tier = 'notebook'; return { msg: hit.entry.a, m: 'happy', acts: rate(hit.entry.id) }; }
+    if (!shouldAsk(raw)) { tier = 'curious'; return fallback(); }
+    if (cbridge() && cloud.configured(cloudCfg())) { tier = 'pending'; return { msg: 'Wait a minute, let me ask a friend…', m: 'think', acts: [], ms: 25000, run: () => askCloud(raw, ctx, fallback) }; }
+    if (!fbridge()) { tier = 'curious'; return fallback(); }
+    tier = 'pending'; askFriendFile(raw);
     return { msg: 'Wait a minute, let me ask a friend…', m: 'think', acts: [] };
   }
   if (fbridge() && Object.keys(fr().open).length) startFriendPoll();
@@ -365,8 +412,16 @@ export function initKamo(o) {
   }
   function ask(raw) {
     lastUser = now();
+    if (pendingFix) {   // after a 👎, what you type next is the right answer
+      const pf = pendingFix; pendingFix = null;
+      if (/^(never ?mind|cancel|skip|annuler)\W*$/i.test(String(raw).trim())) { say('Okay!', 'idle', 2000, []); return; }
+      if (now() - pf.at < 5 * 60000 && nb.correct(pf.id, raw)) { say('Got it! I will remember that.', 'happy', 4000, []); return; }
+    }
+    if (/\b(report card|bulletin|how smart are you)\b/i.test(String(raw))) { say(cardText(), 'happy', 22000, []); return; }
+    tier = '';
     const a = answer(raw); if (!a) return;
-    say(a.msg, a.m, a.run ? 7000 : 22000, a.acts);
+    nb.count('asked'); if (tier !== 'pending') nb.count(tier || 'rules');
+    say(a.msg, a.m, a.ms || (a.run ? 7000 : 22000), a.acts);
     if (a.run) setTimeout(() => { Promise.resolve(a.run()).catch(() => {}); }, 350);
   }
   root.querySelector('.kb-ask').addEventListener('submit', (e) => { e.preventDefault(); const v = qIn.value; qIn.value = ''; ask(v); });
@@ -488,6 +543,20 @@ export function initKamo(o) {
   root.querySelector('.kamo-btn').addEventListener('click', () => { lastActive = now(); lastUser = now(); hop(); say(TAB_TIPS[o.getState().tab] || TIPS[tipI++ % TIPS.length], 'think', 9000); });
   root.querySelector('.kb-x').addEventListener('click', () => setHidden(true));
   back.addEventListener('click', () => { setHidden(false); shownKey = ''; lastActive = now(); tick(); });
+  // ---- the settings box: provider, your key, model, Test, report card ----
+  const pv = $('kamo-prov'), pk = $('kamo-key'), pm = $('kamo-model'), pt = $('kamo-test'), po = $('kamo-test-out'), ph = $('kamo-key-help'), pc = $('kamo-card');
+  if (pv && pk && pm) {
+    const saveCloud = (c) => store('kl-kamo-cloud', JSON.stringify(c));
+    PROVIDERS.forEach((p) => { const op = document.createElement('option'); op.value = p.id; op.textContent = p.label; pv.appendChild(op); });
+    const show = () => { const c = cloudCfg(), p = PROVIDERS.find((x) => x.id === pv.value) || PROVIDERS[0]; pk.value = c.keys[p.id] || ''; pm.value = c.models[p.id] || p.model; if (ph) ph.textContent = 'Get a free key: ' + p.help; if (po) po.textContent = ''; };
+    const keep = () => { const c = cloudCfg(), id = pv.value, p = PROVIDERS.find((x) => x.id === id); c.keys[id] = pk.value.trim(); c.models[id] = pm.value.trim() && pm.value.trim() !== p.model ? pm.value.trim() : ''; saveCloud(c); };
+    pv.addEventListener('change', show); pk.addEventListener('change', keep); pm.addEventListener('change', keep); show();
+    if (pt) pt.addEventListener('click', async () => {
+      keep(); if (!cbridge()) { po.textContent = 'Only in the desktop app.'; return; }
+      po.textContent = 'Testing…'; const r = await cloud.test(pv.value, cloudCfg()); po.textContent = (r.ok ? '✓ ' : '✗ ') + r.why;
+    });
+  }
+  if (pc) pc.addEventListener('click', () => { if (hidden) setHidden(false); say(cardText(), 'happy', 22000, []); });
   if (sel) sel.addEventListener('change', () => { talk.setVoice(VOICES.includes(sel.value) ? sel.value : 'merchant'); store('kl-kamo-voice', talk.voice); shownKey = ''; if (hidden) setHidden(false); say(talk.say('voiceSet'), 'happy', 3500); });
   window.addEventListener('kl-toast', (e) => {
     const m = String(e.detail || ''); if (!m) return;
