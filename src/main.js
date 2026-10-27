@@ -11,6 +11,7 @@ import * as scan from './scan.js';
 import { runDiagnostics } from './diag.js';
 import { createLiveScan } from './livescan.js';
 import { createChecks } from './checks.js';
+import { createCapture } from './capture.js';
 import { num, tax, parseLog, runesFor, fixDigits, joinWrapped, normLine, ocrToLines, nk, stitch, parseLoose, normName, effLabel, buildIndex, prepIndex, pickItem, searchItems, lev, suggest, KNOWN } from './core.js';
 import { DEFAULT_HOTKEY, hotkeyLabel, accelFromEvent } from './hotkey.js';
 import { APP_BUILD } from './diag-plan.js';
@@ -142,151 +143,47 @@ function calcB() {
 ['bl', 'bc', 'bp'].forEach(function (i) { $(i).addEventListener('input', calcB); });
 
 var Q = [], region = null, auto = false, stream = null, lastSmall = null, x0 = 0, y0 = 0, dragging = false;
-var captureSources = [], captureSourceType = 'screen', captureSelection = null, capturePickerResolve = null, pendingCaptureSource = null, activeCaptureSource = null;
+/* ---- the bridge the split-out modules use to reach main.js (getters are read lazily) ---- */
+var scanEnv = {};
+Object.defineProperty(scanEnv, '$', { get: function () { return $; } });
+Object.defineProperty(scanEnv, 'scan', { get: function () { return scan; } });
+Object.defineProperty(scanEnv, 'snapItem', { get: function () { return snapItem; } });
+Object.defineProperty(scanEnv, 'parsePopup', { get: function () { return parsePopup; } });
+Object.defineProperty(scanEnv, 'parseLots', { get: function () { return parseLots; } });
+Object.defineProperty(scanEnv, 'parseTooltip', { get: function () { return parseTooltip; } });
+Object.defineProperty(scanEnv, 'parseMarketChart', { get: function () { return parseMarketChart; } });
+Object.defineProperty(scanEnv, 'parseBudget', { get: function () { return parseBudget; } });
+Object.defineProperty(scanEnv, 'transactionLines', { get: function () { return transactionLines; } });
+Object.defineProperty(scanEnv, 'normalizeTransactionLine', { get: function () { return normalizeTransactionLine; } });
+Object.defineProperty(scanEnv, 'saveLedgerTransactions', { get: function () { return saveLedgerTransactions; } });
+Object.defineProperty(scanEnv, 'itemsUi', { get: function () { return itemsUi; } });
+Object.defineProperty(scanEnv, 'F', { get: function () { return F; } });
+Object.defineProperty(scanEnv, 'recordAction', { get: function () { return recordAction; } });
+Object.defineProperty(scanEnv, 'sessEvent', { get: function () { return sessEvent; } });
+Object.defineProperty(scanEnv, 'profileKeys', { get: function () { return profileKeys; } });
+Object.defineProperty(scanEnv, 'PROFILE_TYPES', { get: function () { return PROFILE_TYPES; } });
+Object.defineProperty(scanEnv, 'updateCaptureControls', { get: function () { return updateCaptureControls; } });
+Object.defineProperty(scanEnv, 'kamoRef', { get: function () { return kamoRef; } });
+Object.defineProperty(scanEnv, 'stream', { get: function () { return stream; }, set: function (v) { stream = v; } });
+Object.defineProperty(scanEnv, 'auto', { get: function () { return auto; }, set: function (v) { auto = v; } });
+Object.defineProperty(scanEnv, 'lastSmall', { get: function () { return lastSmall; }, set: function (v) { lastSmall = v; } });
+Object.defineProperty(scanEnv, 'flowProfile', { get: function () { return flowProfile; } });
+Object.defineProperty(scanEnv, 'saveFlowProfile', { get: function () { return saveFlowProfile; } });
+Object.defineProperty(scanEnv, 'show', { get: function () { return show; } });
+Object.defineProperty(scanEnv, 'P', { get: function () { return P; } });
+Object.defineProperty(scanEnv, 'stillFrame', { get: function () { return stillFrame; } });
+Object.defineProperty(scanEnv, 'profile', { get: function () { return profile; } });
+Object.defineProperty(scanEnv, 'scanning', { get: function () { return scanning; }, set: function (v) { scanning = v; } });
+/* ---- capture (screen share): moved to capture.js ---- */
+var capture = createCapture(function () { return scanEnv; });
+function showCaptureStream() { return capture.showCaptureStream.apply(null, arguments); }
+function updateCaptureControls() { return capture.updateCaptureControls.apply(null, arguments); }
+function closeCapturePicker() { return capture.closeCapturePicker.apply(null, arguments); }
+function endCapture() { return capture.endCapture.apply(null, arguments); }
+function stopShare() { return capture.stopShare.apply(null, arguments); }
+function toggleShare() { return capture.toggleShare.apply(null, arguments); }
+function shareScreen() { return capture.shareScreen.apply(null, arguments); }
 var unclassifiedCaptures = [];
-function renderCaptureSources() {
-  var list = $('capture-sources');
-  var sources = captureSources.filter(function (source) { return source.type === captureSourceType; });
-  list.replaceChildren();
-  $('capture-empty').hidden = sources.length > 0;
-  $('capture-share').disabled = !sources.some(function (source) { return source.id === captureSelection; });
-  sources.forEach(function (source) {
-    var option = document.createElement('button');
-    option.type = 'button';
-    option.className = 'source-option' + (source.id === captureSelection ? ' selected' : '');
-    option.setAttribute('role', 'option');
-    option.setAttribute('aria-selected', String(source.id === captureSelection));
-    var thumbnail = document.createElement('img');
-    thumbnail.src = source.thumbnail;
-    thumbnail.alt = '';
-    var name = document.createElement('span');
-    name.textContent = source.name;
-    option.append(thumbnail, name);
-    option.addEventListener('click', function () {
-      captureSelection = source.id;
-      renderCaptureSources();
-    });
-    list.appendChild(option);
-  });
-}
-function chooseCaptureSource(sources) {
-  captureSources = Array.isArray(sources) ? sources : [];
-  var preferred = flowProfile.preferredCapture;
-  var matchingPreferred = preferred && captureSources.find(function (source) { return source.type === preferred.type && source.name === preferred.name; });
-  captureSourceType = preferred ? preferred.type : 'screen';
-  captureSelection = matchingPreferred ? matchingPreferred.id : null;
-  $('capture-picker').hidden = false;
-  $('picker-screens').classList.toggle('on', captureSourceType === 'screen');
-  $('picker-screens').setAttribute('aria-selected', String(captureSourceType === 'screen'));
-  $('picker-windows').classList.toggle('on', captureSourceType === 'window');
-  $('picker-windows').setAttribute('aria-selected', String(captureSourceType === 'window'));
-  renderCaptureSources();
-  return new Promise(function (resolve) { capturePickerResolve = resolve; });
-}
-function closeCapturePicker(sourceId) {
-  $('capture-picker').hidden = true;
-  if (capturePickerResolve) {
-    capturePickerResolve(sourceId || null);
-    capturePickerResolve = null;
-  }
-}
-function setCaptureSourceType(type) {
-  captureSourceType = type;
-  captureSelection = null;
-  var screenTab = type === 'screen';
-  $('picker-screens').classList.toggle('on', screenTab);
-  $('picker-screens').setAttribute('aria-selected', String(screenTab));
-  $('picker-windows').classList.toggle('on', !screenTab);
-  $('picker-windows').setAttribute('aria-selected', String(!screenTab));
-  renderCaptureSources();
-}
-$('picker-screens').addEventListener('click', function () { setCaptureSourceType('screen'); });
-$('picker-windows').addEventListener('click', function () { setCaptureSourceType('window'); });
-$('capture-share').addEventListener('click', function () {
-  pendingCaptureSource = captureSources.find(function (source) { return source.id === captureSelection; }) || null;
-  closeCapturePicker(captureSelection);
-});
-$('capture-cancel').addEventListener('click', function () { closeCapturePicker(); });
-$('capture-picker-close').addEventListener('click', function () { closeCapturePicker(); });
-$('capture-picker').addEventListener('click', function (event) {
-  if (event.target === this) closeCapturePicker();
-});
-function showCaptureStream(s) {
-  stream = s;
-  setTimeout(function () { sessEvent({ type: 'share' }); }, 600);
-  activeCaptureSource = pendingCaptureSource;
-  if (window.kamaDesktopCapture) window.kamaDesktopCapture.setSharing(true);
-  $('vid').srcObject = s;
-  $('vid').play();
-  $('vw').style.display = 'block';
-  $('stop-share').hidden = false;
-  var sourceName = pendingCaptureSource ? pendingCaptureSource.name : 'shared screen or window';
-  $('capture-status').textContent = 'Sharing ' + sourceName + '.';
-  if (pendingCaptureSource) {
-    flowProfile.preferredCapture = { type: pendingCaptureSource.type, name: pendingCaptureSource.name };
-    pendingCaptureSource = null;
-    saveFlowProfile();
-  }
-  recordAction('share');
-  updateCaptureControls();
-  var videoTrack = s.getVideoTracks()[0];
-  if (videoTrack) videoTrack.onended = function () { endCapture(false); };
-}
-function updateCaptureControls() {
-  $('global-share-toggle').textContent = stream ? 'Stop screen share' : 'Start screen share';
-  $('global-auto-toggle').textContent = 'Auto capture ' + (auto ? 'on' : 'off');
-  $('global-auto-toggle').disabled = !stream;
-  $('live-dot').hidden = !($('live-scan').checked && stream);
-}
-function endCapture(stopTracks) {
-  var activeStream = stream;
-  stream = null;
-  if (window.kamaDesktopCapture) window.kamaDesktopCapture.setSharing(false);
-  activeCaptureSource = null;
-  auto = false;
-  lastSmall = null;
-  if (stopTracks && activeStream) activeStream.getTracks().forEach(function (track) { track.stop(); });
-  $('vid').srcObject = null;
-  $('vw').style.display = 'none';
-  $('stop-share').hidden = true;
-  $('autobtn').textContent = 'Auto capture: off';
-  $('capture-status').textContent = 'Screen sharing stopped.';
-  updateCaptureControls();
-}
-function stopShare() {
-  if (!stream) return;
-  recordAction('stop-share');
-  endCapture(true);
-}
-function toggleShare() {
-  if (stream) {
-    stopShare();
-    return;
-  }
-  show('cap');
-  shareScreen();
-}
-function shareScreen() {
-  var bridge = window.kamaDesktopCapture;
-  if (!bridge) {
-    navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-      .then(showCaptureStream)
-      .catch(function (e) { alert('Could not share the window: ' + e.message); });
-    return;
-  }
-
-  bridge.listSources()
-    .then(chooseCaptureSource)
-    .then(function (sourceId) {
-      if (!sourceId) return null;
-      return bridge.selectSource(sourceId, pendingCaptureSource && pendingCaptureSource.name).then(function (selected) {
-        if (!selected) throw new Error('The selected screen or window is no longer available.');
-        return navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      });
-    })
-    .then(function (s) { if (s) showCaptureStream(s); })
-    .catch(function (e) { alert('Could not share the window: ' + e.message); });
-}
 var reviewRows = [];
 var reviewSourceIds = null;
 var lastSavedKeys = [];
@@ -1212,31 +1109,6 @@ var checks = createChecks(function () { return scanEnv; });
 function sessEvent(ev) { return checks.sessEvent(ev); }
 
 /* ---- live scan: moved to livescan.js (wired here) ---- */
-var scanEnv = {};
-Object.defineProperty(scanEnv, '$', { get: function () { return $; } });
-Object.defineProperty(scanEnv, 'scan', { get: function () { return scan; } });
-Object.defineProperty(scanEnv, 'snapItem', { get: function () { return snapItem; } });
-Object.defineProperty(scanEnv, 'parsePopup', { get: function () { return parsePopup; } });
-Object.defineProperty(scanEnv, 'parseLots', { get: function () { return parseLots; } });
-Object.defineProperty(scanEnv, 'parseTooltip', { get: function () { return parseTooltip; } });
-Object.defineProperty(scanEnv, 'parseMarketChart', { get: function () { return parseMarketChart; } });
-Object.defineProperty(scanEnv, 'parseBudget', { get: function () { return parseBudget; } });
-Object.defineProperty(scanEnv, 'transactionLines', { get: function () { return transactionLines; } });
-Object.defineProperty(scanEnv, 'normalizeTransactionLine', { get: function () { return normalizeTransactionLine; } });
-Object.defineProperty(scanEnv, 'saveLedgerTransactions', { get: function () { return saveLedgerTransactions; } });
-Object.defineProperty(scanEnv, 'itemsUi', { get: function () { return itemsUi; } });
-Object.defineProperty(scanEnv, 'F', { get: function () { return F; } });
-Object.defineProperty(scanEnv, 'recordAction', { get: function () { return recordAction; } });
-Object.defineProperty(scanEnv, 'sessEvent', { get: function () { return sessEvent; } });
-Object.defineProperty(scanEnv, 'profileKeys', { get: function () { return profileKeys; } });
-Object.defineProperty(scanEnv, 'PROFILE_TYPES', { get: function () { return PROFILE_TYPES; } });
-Object.defineProperty(scanEnv, 'updateCaptureControls', { get: function () { return updateCaptureControls; } });
-Object.defineProperty(scanEnv, 'kamoRef', { get: function () { return kamoRef; } });
-Object.defineProperty(scanEnv, 'stream', { get: function () { return stream; } });
-Object.defineProperty(scanEnv, 'P', { get: function () { return P; } });
-Object.defineProperty(scanEnv, 'stillFrame', { get: function () { return stillFrame; } });
-Object.defineProperty(scanEnv, 'profile', { get: function () { return profile; } });
-Object.defineProperty(scanEnv, 'scanning', { get: function () { return scanning; }, set: function (v) { scanning = v; } });
 var live = createLiveScan(function () { return scanEnv; });
 function scanFrame(frame) { return live.scanFrame(frame); }
 live.init();
