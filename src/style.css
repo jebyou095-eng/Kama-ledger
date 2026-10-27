@@ -770,3 +770,7 @@ body.overlay main { display: none; }
 .kamo-brainbox .kb-hint { margin: 0; font-size: 12px; opacity: .75; }
 .kamo-brainbox .kb-row { display: flex; gap: 8px; align-items: center; }
 #kamo-test-out { font-size: 12px; }
+
+/* auto calm mode (set by the lag guard): pause the decorative idle animations, keep movement */
+.calm .kamo-svg *, .calm .kamo-bubble * { animation-play-state: paused !important; }
+.calm *, .calm *::before, .calm *::after { scroll-behavior: auto !important; }

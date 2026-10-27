@@ -73,3 +73,24 @@ export async function runPerf(opts) {
   try { let n = 0; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); n += k.length + (localStorage.getItem(k) || '').length; } info.storageKB = Math.round(n / 1024); } catch { /* n/a */ }
   return { runs, info, result: analyze(runs, info), at: new Date().toISOString() };
 }
+
+// ---- automatic guard: watches for sustained freezes and calms the decorative animations by itself ----
+// Pure decision step (tested): ratio = share of the window the page was blocked by long tasks.
+export function guardStep(st, blockedMs, windowMs) {
+  const bad = blockedMs / Math.max(1, windowMs) > 0.15;
+  const n = { bad: bad ? st.bad + 1 : 0, good: bad ? 0 : st.good + 1, calm: st.calm };
+  if (!n.calm && n.bad >= 2) n.calm = true;          // two bad windows in a row: calm down
+  else if (n.calm && n.good >= 6) n.calm = false;    // a calm minute: bring the animations back
+  return n;
+}
+
+export function startGuard(onChange, windowMs) {
+  const win = windowMs || 10000; let st = { bad: 0, good: 0, calm: false }, blocked = 0, po = null;
+  try { po = new PerformanceObserver((l) => { for (const e of l.getEntries()) blocked += e.duration; }); po.observe({ entryTypes: ['longtask'] }); } catch { return { stop() {}, get calm() { return false; } }; }
+  const iv = setInterval(() => {
+    if (document.hidden) { blocked = 0; return; }
+    const was = st.calm; st = guardStep(st, blocked, win); blocked = 0;
+    if (st.calm !== was) { try { onChange(st.calm); } catch { /* ui gone */ } }
+  }, win);
+  return { stop() { clearInterval(iv); if (po) po.disconnect(); }, get calm() { return st.calm; } };
+}

@@ -1104,6 +1104,16 @@ function scanNow() {
   if (!frame) { $('scan-status').textContent = 'Nothing to scan: share the game window first.'; return Promise.resolve(); }
   return scanFrame(frame);
 }
+/* ---- automatic lag guard: if the page keeps freezing it calms the animations by itself, and restores them later ---- */
+setTimeout(function () {
+  import('./perf.js').then(function (P) {
+    P.startGuard(function (calm) {
+      document.documentElement.classList.toggle('calm', calm);
+      $('perf-auto').textContent = calm ? 'Auto calm mode is ON: the app was freezing, so decorative animations are paused. It turns itself off after a quiet minute.' : 'Auto calm mode is off.';
+    });
+  }).catch(function () {});
+}, 20000);
+
 /* ---- checks (diagnostics, performance, guided session): moved to checks.js ---- */
 var checks = createChecks(function () { return scanEnv; });
 function sessEvent(ev) { return checks.sessEvent(ev); }
