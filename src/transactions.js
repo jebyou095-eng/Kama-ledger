@@ -38,6 +38,7 @@ export function classifyTransactionLine(line) {
 export function normLine(raw) {
   let normalized = String(raw || '').replace(/[\u00a0\u202f]/g, ' ').replace(/×/g, 'x').trim();
   if (!normalized) return '';
+  normalized = normalized.replace(/^[{(]\s*(\d{1,2}:\d{2})\s*[})]/, '[$1]');   // OCR often reads the timestamp's brackets as { } or ( )
   const time = normalized.match(/^(\[\d{1,2}:\d{2}\])\s*/);
   const prefix = time ? `${time[1]} ` : '';
   normalized = normalized.replace(/^\[\d{1,2}:\d{2}\]\s*/, '');

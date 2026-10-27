@@ -1,9 +1,9 @@
 // Run with: node tests/run-tests.js   (no install needed)
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const root=path.join(__dirname,'..');
-const html=fs.readFileSync(path.join(root,'kama-ledger.html'),'utf8');
-const core=html.split('/*CORE*/')[1].split('/*END*/')[0];
-const c={};vm.createContext(c);vm.runInContext(core,c);
+const core=fs.readFileSync(path.join(root,'src/core.js'),'utf8').replace(/^export \{[^}]*\};?\s*$/m,'').replace(/^import .*$/m,'');
+const c={};vm.createContext(c);
+(async()=>{ c.normalizeTransactionLine=(await import('../src/transactions.js')).normLine; vm.runInContext(core,c);
 const exp=JSON.parse(fs.readFileSync(path.join(root,'fixtures/expected.json'),'utf8'));
 let fails=0,n=0;const ok=(name,cond,extra='')=>{n++;if(!cond)fails++;console.log((cond?'PASS ':'FAIL ')+name+(extra?'  '+extra:''))};
 for(const f of ['runes.txt','rune_astrale.txt','talisman_batch.txt','edge_cases.txt','lots_1000.txt']){
@@ -19,7 +19,7 @@ const odd=c.parseLog('7 x [Y] (50 kamas)\nrandom text');ok('odd quantity and jun
 const L=['a 1 x [A] (1 kamas)','b 1 x [B] (2 kamas)','c 1 x [C] (3 kamas)','d 1 x [D] (4 kamas)'];
 const s=c.stitch([L.slice(0,3),L.slice(1)]);ok('stitch overlapping captures',s.lines.length===4&&s.warns.length===0);
 ok('stitch warns on a gap',c.stitch([L.slice(0,1),L.slice(3)]).warns.length===1);
-ok('OCR timestamp junk cleaned',c.normLine('{21:10} 1x [Gil de X] (2 385 kamas)')==='1 x [Gil de X] (2 385 kamas)');
+ok('OCR timestamp junk cleaned',c.normLine('{21:10} 1x [Gil de X] (2 385 kamas)').replace(/[\u00a0\u202f]/g,' ')==='[21:10] 1 x [Gil de X] (2 385 kamas)');
 // ---- game data (Datafus format, tiny synthetic sample) ----
 {const raw={fr:{'1':'Amulette d\'Oshimo','2':'Pépite','3':'Amulette','4':'#1{~1~2 à }#2 Vitalité','5':'-#1{~1~2 à -}#2 Portée','6':'Dommage{~ps}{~zs} Feu'},
  items:[{id:10,nameId:1,typeId:7,level:196,possibleEffects:[{effectId:125,diceNum:251,diceSide:300}]},{id:11,nameId:2,typeId:9,level:1,possibleEffects:[]}],
@@ -33,3 +33,4 @@ ok('OCR timestamp junk cleaned',c.normLine('{21:10} 1x [Gil de X] (2 385 kamas)'
  ok('data: parseLoose accepts NaN',c.parseLoose('{"a":NaN,"b":[1,Infinity,-NaN]}').a===null);
  ok('data: search by prefix',c.searchItems(P,'amu',5).length===1)}
 console.log(`\n${n-fails}/${n} passed`);process.exit(fails?1:0);
+})();
