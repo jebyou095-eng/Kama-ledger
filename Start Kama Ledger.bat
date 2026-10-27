@@ -27,7 +27,7 @@ if not exist "voice-engine\kokoro.int8.onnx.part3" if not exist "voice-engine\ko
   echo Downloading Kamo's voice engine, about 90 MB, once...
   if not exist voice-engine mkdir voice-engine
   rem curl.exe is built into Windows 10 and 11 and is fast; the old PowerShell download crawled because of its progress bar.
-  curl.exe -L -f -s -S -o "voice-engine\kokoro.int8.onnx.dl1" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part1" && curl.exe -L -f -s -S -o "voice-engine\kokoro.int8.onnx.dl2" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part2" && curl.exe -L -f -s -S -o "voice-engine\kokoro.int8.onnx.dl3" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part3" && (
+  echo Part 1 of 3: && curl.exe -L -f -# -o "voice-engine\kokoro.int8.onnx.dl1" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part1" && echo Part 2 of 3: && curl.exe -L -f -# -o "voice-engine\kokoro.int8.onnx.dl2" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part2" && echo Part 3 of 3: && curl.exe -L -f -# -o "voice-engine\kokoro.int8.onnx.dl3" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part3" && (
     move /y "voice-engine\kokoro.int8.onnx.dl1" "voice-engine\kokoro.int8.onnx.part1" >nul
     move /y "voice-engine\kokoro.int8.onnx.dl2" "voice-engine\kokoro.int8.onnx.part2" >nul
     move /y "voice-engine\kokoro.int8.onnx.dl3" "voice-engine\kokoro.int8.onnx.part3" >nul
