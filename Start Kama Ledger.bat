@@ -26,7 +26,16 @@ rem Kamo's live voice engine (about 90 MB, downloaded once). If it fails, Kamo s
 if not exist "voice-engine\kokoro.int8.onnx.part3" if not exist "voice-engine\kokoro.int8.onnx" (
   echo Downloading Kamo's voice engine, about 90 MB, once...
   if not exist voice-engine mkdir voice-engine
-  powershell -NoProfile -Command "$ErrorActionPreference='Stop'; try { foreach($i in 1,2,3){ Invoke-WebRequest -UseBasicParsing -Uri ('https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part'+$i) -OutFile ('voice-engine\kokoro.int8.onnx.dl'+$i) }; foreach($i in 1,2,3){ Move-Item -Force ('voice-engine\kokoro.int8.onnx.dl'+$i) ('voice-engine\kokoro.int8.onnx.part'+$i) } } catch { Write-Host 'Voice engine download failed; Kamo will use his recorded voice.'; Remove-Item 'voice-engine\*.dl*' -ErrorAction SilentlyContinue }"
+  rem curl.exe is built into Windows 10 and 11 and is fast; the old PowerShell download crawled because of its progress bar.
+  curl.exe -L -f -s -S -o "voice-engine\kokoro.int8.onnx.dl1" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part1" && curl.exe -L -f -s -S -o "voice-engine\kokoro.int8.onnx.dl2" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part2" && curl.exe -L -f -s -S -o "voice-engine\kokoro.int8.onnx.dl3" "https://raw.githubusercontent.com/jebyou095-eng/kama-ledger/main/voice-engine-download/kokoro.int8.onnx.part3" && (
+    move /y "voice-engine\kokoro.int8.onnx.dl1" "voice-engine\kokoro.int8.onnx.part1" >nul
+    move /y "voice-engine\kokoro.int8.onnx.dl2" "voice-engine\kokoro.int8.onnx.part2" >nul
+    move /y "voice-engine\kokoro.int8.onnx.dl3" "voice-engine\kokoro.int8.onnx.part3" >nul
+    echo Voice engine ready.
+  ) || (
+    echo Voice engine download failed; Kamo will use his recorded voice. It will retry next launch.
+    del /q "voice-engine\*.dl*" >nul 2>&1
+  )
 )
 call npm run build > build-log.txt 2>&1
 if errorlevel 1 (
