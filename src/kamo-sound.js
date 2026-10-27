@@ -75,7 +75,6 @@ export function createSound(opts) {
     if (m) { play('snore.ogg'); if (!/[a-z]/i.test(rest)) return; setTimeout(() => { if (ticket === want) live(rest, mood); }, 2300); return; }
     live(rest, mood, ticket);
   }
-  if (mode === 'voice') setTimeout(() => { tts.load().catch(() => {}); }, 5000);   // warm up the live voice while he is idle
   function live(text, mood, ticket) {
     const t = ticket || ++want;
     tts.say(shorten(text.replace(/z{2,}/gi, ' '))).then((ok) => { if (!ok && t === want) react(mood); }).catch(() => { if (t === want) react(mood); });
