@@ -24,5 +24,8 @@
   ['hello', 'what are the best crafts', 'is Noix de Kokoko worth buying', 'what changed', 'profit', 'how much each'].forEach((q) => assert.equal(k.runSkill(q, data), null, 'must not fire: ' + q));
   assert.deepEqual(k.extract('buy 1,5k sell 2m tax 2%'), { nums: [1500, 2000000], pct: 2 });
   assert.equal(k.runSkill('100 each for 0 qty', data), null, 'division by zero is refused');
+  const kamo = fs.readFileSync(__dirname + '/../src/kamo.js', 'utf8');
+  assert.ok(/import \{ runSkill \} from '.\/kamo-skills.js'/.test(kamo) && /runSkill\(raw\)/.test(kamo), 'skills must be wired into kamo.js');
+  assert.ok(/import \{ diagnose, speak \}/.test(kamo) && /selfCheck\(\)/.test(kamo), 'self-check must be wired into kamo.js');
   console.log('skills gate passed (' + data.length + ' skills)');
 })().catch((e) => { console.error(e); process.exit(1); });

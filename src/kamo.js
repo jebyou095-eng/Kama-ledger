@@ -9,6 +9,8 @@ import { LIES } from './kamo-motion.js';
 import { applyAnswers, newQuestion, shouldAsk } from './kamo-friend.js';
 import { createNotebook } from './kamo-notebook.js';
 import { PROVIDERS, createCascade, pickContext } from './kamo-cloud.js';
+import { runSkill } from './kamo-skills.js';
+import { diagnose, speak } from './kamo-preflight.js';
 import { VOICES, analyzeHabits, analyzeMarket, createVoice, curiousHint, dayKey, fmt, normalizeMem, planNext, recapVars, tabName, tabTip, understand } from './kamo-brain.js';
 
 export const SVG = `
@@ -346,7 +348,19 @@ export function initKamo(o) {
     const rec = by(ai.id), a = analyzeItem(rec, t);
     return { msg: ai.intent === 'trend' ? explainTrend(a) : explainWorth(a, ai.sell), m: a.verdict === 'cheap' ? 'happy' : 'think', acts: [{ label: 'Open ' + rec.name, run: () => o.actions.best(rec.id) }] };
   }
+  // He looks at his own state and says what is missing and what to tell Claude; the same note goes into the status file for the connector.
+  function selfCheck() {
+    const st = (typeof window !== 'undefined' && window.klStatus && window.klStatus.data) || {}, c = cloudCfg(), sc = (typeof window !== 'undefined' && window.klLastScan && window.klLastScan.popup) || null;
+    const keys = {}; Object.keys(c.keys || {}).forEach((id) => { keys[id] = !!String(c.keys[id] || '').trim(); });
+    const lots = sc && sc.lots ? Object.keys(sc.lots).filter((k) => /^\d+$/.test(k)).length : 0;
+    const list = diagnose({ desktop: !!cbridge(), providers: PROVIDERS, keys, test: st.kamoTest || null, errors: (st.errors || []).length, scan: sc ? { popupAvg: sc.pop && sc.pop.avg ? sc.pop.avg : null, popupLots: lots } : null, perf: st.perf ? st.perf.verdict : null });
+    const r = speak(list);
+    try { if (window.klStatus) window.klStatus.note('selfCheck', { ok: r.ok, items: list.map((x) => x.tell) }); } catch { /* optional */ }
+    return r;
+  }
   function answer(raw) {
+    if (/\b(check yourself|self.?check|what do you need|diagnose yourself|auto.?check)\b/i.test(String(raw))) { const r = selfCheck(); return { msg: r.text, m: r.ok ? 'happy' : 'think', acts: [] }; }
+    const sk = runSkill(raw); if (sk) { nb.count('rules'); return { msg: sk.text, m: 'happy', acts: [] }; }   // offline skills: calculations that need numbers in the question
     const ai = parseAsk(raw, (o.items.snapshot ? o.items.snapshot() : []).map((r) => ({ id: r.id, name: r.name })));
     if (ai) return analyst(ai, raw);
     const u = understand(raw); if (!u) return null;
@@ -577,6 +591,8 @@ export function initKamo(o) {
   });
   setInterval(tick, 700); tick();
   setInterval(autoTick, 2000);
+  // a few seconds after the app opens he checks himself once, and speaks up only when something needs the player or Claude
+  setTimeout(() => { try { if (hidden || outside) return; const r = selfCheck(); if (!r.ok) say(r.text, 'think', 20000, []); } catch { /* optional */ } }, 9000);
   // he walks in when the app opens
   if (!hidden && !outside && !reduce()) { mover.teleport(-mover.size, window.innerHeight - 10, true); setTimeout(() => { mover.walkTo(home().x, home().y).then(() => { if (auto) say(talk.say('hi'), 'happy', 5000); }); }, 700); }
   return {
