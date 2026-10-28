@@ -56,3 +56,10 @@
   assert.match(nb.lookup('what is a kama in dofus', []).entry.a, /currency/);
   console.log('kamo-cloud checks passed');
 })();
+(async () => {
+  const { buildMessages } = await import('../src/kamo-cloud.js');
+  const sys = buildMessages('what is the capital of Peru', { items: [] })[0].content;
+  require('assert').ok(/anything/i.test(sys) && !/only talk about|only answer/i.test(sys), 'Kamo may answer outside the market');
+  require('assert').ok(/never invent prices/i.test(sys), 'still never invents prices');
+  console.log('kamo-cloud scope check passed');
+})();

@@ -136,7 +136,7 @@ ipcMain.handle('brain:chat', async (_e, req) => {
   const messages = msgs.map((m) => ({ role: m && m.role === 'system' ? 'system' : 'user', content: String(m && m.content || '').slice(0, 2500) }));
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
   try {
-    const r = await net.fetch(url, { method: 'POST', redirect: 'error', signal: ctl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ model, messages, max_tokens: 220, temperature: 0.4 }) });
+    const r = await net.fetch(url, { method: 'POST', redirect: 'error', signal: ctl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ model, messages, max_tokens: 400, temperature: 0.4 }) });
     if (!r.ok) { let detail = ''; try { const j0 = await r.json(); detail = String((j0 && j0.error && (j0.error.message || j0.error)) || '').replace(/gsk_\w+/g, '***').slice(0, 140); } catch (e) { /* no body */ } return { ok: false, status: r.status, retryAfter: Number(r.headers.get('retry-after')) || 0, detail }; }
     const j = await r.json(), text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     return text ? { ok: true, text: String(text) } : { ok: false, error: 'empty answer' };
