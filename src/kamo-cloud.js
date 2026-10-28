@@ -58,7 +58,7 @@ export function createCascade(transport, opts) {
     if (st === 429 || st >= 500) { until[p.id] = o.now() + Math.max(o.cooldown, (r.retryAfter || 0) * 1000); state[p.id] = st === 429 ? 'busy' : 'down'; }
     else if (st === 401 || st === 403) { until[p.id] = o.now() + o.badKey; state[p.id] = 'key'; }
     else state[p.id] = st === 400 || st === 404 ? 'model' : 'error';
-    return { ok: false, status: st, error: (r && r.error) || '', provider: p.id };
+    return { ok: false, status: st, error: (r && r.error) || '', detail: (r && r.detail) || '', provider: p.id };
   }
   return {
     configured: (s) => usable(s).length > 0,
@@ -87,7 +87,7 @@ export function reason(r) {
   const st = r.status || 0;
   if (st === 401 || st === 403) return 'The key was refused. Check that you copied it fully.';
   if (st === 429) return 'Rate limit reached. Wait a minute and try again.';
-  if (st === 400 || st === 404) return 'The model name was not accepted. Check it in the box.';
+  if (st === 400 || st === 404) return 'The model name was not accepted. Check it in the box.' + (r.detail ? ' Groq says: ' + r.detail : '');
   if (st >= 500) return 'The service is having trouble. Try later.';
   return r.error ? 'No answer: ' + String(r.error).slice(0, 80) : 'No answer. Check your internet.';
 }
