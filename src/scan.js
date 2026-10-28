@@ -89,6 +89,20 @@ export function whiteText(src, box, k, bias) {
   return c;
 }
 
+// Like whiteText but keeps coloured text too (red/green/orange prices). Crop must exclude the gold kama icon.
+export function brightText(src, box, k) {
+  const c = cropScaled(src, box, k), g = c.getContext('2d');
+  const img = g.getImageData(0, 0, c.width, c.height), p = img.data;
+  let mx = 0; for (let i = 0; i < p.length; i += 4) mx = Math.max(mx, 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2]);
+  const thr = Math.max(110, mx * 0.62);
+  for (let i = 0; i < p.length; i += 4) {
+    const lum = 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2];
+    p[i] = p[i + 1] = p[i + 2] = lum > thr ? 0 : 255; p[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
 // Greyscale + contrast + invert: for coloured chat text.
 export function greyInvert(src, box, k) {
   const c = cropScaled(src, box, k), g = c.getContext('2d');

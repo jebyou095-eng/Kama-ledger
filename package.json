@@ -15,7 +15,7 @@
     "build:icon": "node scripts/generate-icon.js",
     "package:win": "npm run build:icon && npm run build && electron-builder --win nsis --publish never",
     "package:portable": "npm run build:icon && npm run build && electron-builder --win portable --publish never",
-    "test": "node tests/run-tests.cjs && node tests/transactions.cjs && node tests/items.cjs && node tests/market.cjs && node tests/detect.cjs && node tests/gamedata.cjs && node tests/kamo.cjs && node tests/filter.cjs && node tests/session.cjs && node tests/jet.cjs && node tests/kamo-ai.cjs && node tests/mcp.cjs && node tests/mcp-config.cjs && node tests/kamo-sound.cjs && node tests/kamo-motion.cjs && node tests/kamo-notebook.cjs && node tests/kamo-friend.cjs && node tests/kamo-cloud.cjs && node tests/perf.cjs && node tests/livescan.cjs && node tests/checks.cjs && node tests/hotkey.cjs && node tests/capture.cjs"
+    "test": "node tests/lotrows.cjs && node tests/run-tests.cjs && node tests/transactions.cjs && node tests/items.cjs && node tests/market.cjs && node tests/detect.cjs && node tests/gamedata.cjs && node tests/kamo.cjs && node tests/filter.cjs && node tests/session.cjs && node tests/jet.cjs && node tests/kamo-ai.cjs && node tests/mcp.cjs && node tests/mcp-config.cjs && node tests/kamo-sound.cjs && node tests/kamo-motion.cjs && node tests/kamo-notebook.cjs && node tests/kamo-friend.cjs && node tests/kamo-cloud.cjs && node tests/perf.cjs && node tests/livescan.cjs && node tests/checks.cjs && node tests/hotkey.cjs && node tests/capture.cjs"
   },
   "devDependencies": {
     "electron": "^44.9.3",

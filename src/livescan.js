@@ -1,5 +1,6 @@
 // Live scan and the scan itself: reads each new screen of the shared game window and turns it into prices, lots, jets and marks.
 // Moved out of main.js. It reaches the rest of the app through getEnv(), a small object of getters that main.js provides.
+import { readLotRows } from './lotrows.js';
 export function createLiveScan(getEnv) {
   var liveTimer = null, liveLast = null, livePrev = null, refreshing = false;
   async function liveTick() {
@@ -73,6 +74,7 @@ export function createLiveScan(getEnv) {
         } else if (k === 'popup') {
           var pl = await scan.readText(frame, prof.popup, 'white');
           var pop = parsePopup(pl), lots = parseLots(pl.join('\n'), pop.avg);
+          try { var rr = await readLotRows(frame, { x: prof.popup.x * frame.width, y: prof.popup.y * frame.height, w: prof.popup.w * frame.width, h: prof.popup.h * frame.height }); Object.keys(rr).forEach(function (q) { lots[q] = rr[q]; }); } catch (e) { /* the whole-popup read stays */ }
           if (!Object.keys(lots).length && !pop.avg) return quick ? null : 'Popup: could not read it';
           window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
           info.popup = { id: pop.name, lots: Object.keys(lots).length };
