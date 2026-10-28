@@ -17,6 +17,8 @@ export function findBands(prof, minH) {
   return rows;
 }
 
+export function vote(v) { const c = {}; v.forEach((x) => { if (x > 0) c[x] = (c[x] || 0) + 1; }); const best = Object.keys(c).sort((a, b) => c[b] - c[a])[0]; return best && c[best] >= 2 ? Number(best) : null; }
+
 export function digits(t) { const d = String(t || '').replace(/\D/g, ''); return d ? Number(d) : null; }
 
 export async function readLotRows(frame, pb) {
@@ -28,8 +30,10 @@ export async function readLotRows(frame, pb) {
   for (const [a, z] of bands) {
     const y = y0 + a, h = z - a, opt = { psm: 7, whitelist: '0123456789 ' };
     const q = await recognize(whiteText(frame, { x: pb.x + pb.w * 0.15, y: y + h * 0.15, w: pb.w * 0.2, h: h * 0.7 }, 5), opt);
-    const p = await recognize(brightText(frame, { x: pb.x + pb.w * 0.34, y: y + h * 0.15, w: pb.w * 0.365, h: h * 0.7 }, 5), opt);
-    const qty = digits(q.text), price = digits(p.text);
+    // three differently enlarged and thresholded reads of the price vote; the answer must be agreed by at least two
+    const box = { x: pb.x + pb.w * 0.34, y: y + h * 0.15, w: pb.w * 0.365, h: h * 0.7 };
+    const votes = await Promise.all([[4, 0.55], [5, 0.62], [6, 0.7]].map(([k, f]) => recognize(brightText(frame, box, k, f), opt).then((d) => digits(d.text))));
+    const price = vote(votes), qty = digits(q.text);
     if (SIZES.includes(qty) && price > 0 && !(qty in out)) out[qty] = price;
   }
   return out;
