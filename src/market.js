@@ -201,7 +201,7 @@ export function parsePopup(lines) {
     const t = clean[idx].replace(new RegExp('niv\\.?\\s*' + LV + '(?![A-Za-z])', 'i'), '').replace(/[^\p{L} ]/gu, ' ').trim();
     out.type = t;
   } else if (clean.length) out.name = clean[0];
-  const avg = clean.join('\n').match(/prix\s+moyen\s*:?\s*([\dOolI ]+)/i);
+  const avg = clean.join('\n').match(/prix\s*moyen\s*:?\s*([\dOolI ]+)/i);
   if (avg) out.avg = cleanGrouped(avg[1]);
   return out;
 }

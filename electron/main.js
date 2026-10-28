@@ -224,6 +224,7 @@ async function showOverlay(on) {
       webPreferences: { preload: join(__dirname, 'overlay-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
     });
     overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+    try { overlayWindow.setContentProtection(true); } catch (e) { logLine('content protection: ' + (e && e.message)); }   // keep Kamo, boxes and rings OUT of the screen capture, or the scan reads them
     overlayWindow.setIgnoreMouseEvents(true, { forward: true });
     overlayWindow.setMenuBarVisibility(false);
     overlayWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

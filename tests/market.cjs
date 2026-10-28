@@ -104,3 +104,9 @@ const assert = require('node:assert/strict');
   assert.deepEqual(it.parseLots('10 13 900 000 ACHETER 3'), { 10: 13900000 });
   console.log('coin-glyph number checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
+(async () => {
+  const { parsePopup } = await import('../src/market.js');
+  const p = parsePopup(['Noix de Kokoko', 'Niv. 50 - Fruit', 'Prixmoyen:69  l&', 'Quantité en inventaire : 0']);
+  require('assert').equal(p.avg, 69, 'average read even when OCR drops the space in "Prix moyen"');
+  console.log('market popup average check passed');
+})();
