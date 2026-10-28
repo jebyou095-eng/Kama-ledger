@@ -198,12 +198,20 @@ async function overlayDisplay() {
 // Where the shared picture sits on the overlay, as fractions of the overlay: the whole thing for a shared screen, the window's place for a shared window.
 ipcMain.handle('capture:frame-rect', async (_e, pw, ph) => {
   try {
-    if (sharedSourceId && sharedSourceId.startsWith('screen:')) return { fx: 0, fy: 0, fw: 1, fh: 1, kind: 'screen' };
+    // Fractions are taken against where the overlay window REALLY is (Windows can shrink it to the work area, for example),
+    // so a mark lands on the right pixel of the game whatever size the overlay ended up with.
+    const ob = overlayWindow && !overlayWindow.isDestroyed() ? overlayWindow.getBounds() : null;
+    if (sharedSourceId && sharedSourceId.startsWith('screen:')) {
+      const d = await overlayDisplay(), b = d.bounds;
+      if (ob && ob.width > 0 && ob.height > 0) { if (Math.abs(ob.height - b.height) > 1 || Math.abs(ob.width - b.width) > 1) logLine('overlay bounds differ from the screen: ' + JSON.stringify(ob) + ' vs ' + JSON.stringify(b)); return { fx: (b.x - ob.x) / ob.width, fy: (b.y - ob.y) / ob.height, fw: b.width / ob.width, fh: b.height / ob.height, kind: 'screen' }; }
+      return { fx: 0, fy: 0, fw: 1, fh: 1, kind: 'screen' };
+    }
     const r = await sharedWindowRect(Number(pw), Number(ph));
     if (!r) return null;
     const d = screen.getDisplayMatching(r), b = d.bounds;
     if (overlayWindow && !overlayWindow.isDestroyed() && overlayDisplayId !== d.id) { overlayWindow.setBounds(b); overlayDisplayId = d.id; }
-    return { fx: (r.x - b.x) / b.width, fy: (r.y - b.y) / b.height, fw: r.width / b.width, fh: r.height / b.height, kind: 'window' };
+    const o = overlayWindow && !overlayWindow.isDestroyed() ? overlayWindow.getBounds() : b;
+    return { fx: (r.x - o.x) / o.width, fy: (r.y - o.y) / o.height, fw: r.width / o.width, fh: r.height / o.height, kind: 'window' };
   } catch (e) { logLine('frame-rect: ' + (e && e.message)); return null; }
 });
 async function showOverlay(on) {
@@ -226,6 +234,7 @@ async function showOverlay(on) {
   }
   overlayDisplayId = d.id;
   overlayWindow.showInactive();
+  overlayWindow.setBounds(d.bounds);   // once more after it is shown: Windows may have fitted it to the work area first
   registerAskKey(true);
   return true;
 }

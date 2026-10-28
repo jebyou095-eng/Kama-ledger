@@ -569,12 +569,13 @@ export function initKamo(o) {
   if (!hidden && !outside && !reduce()) { mover.teleport(-mover.size, window.innerHeight - 10, true); setTimeout(() => { mover.walkTo(home().x, home().y).then(() => { if (auto) say(talk.say('hi'), 'happy', 5000); }); }, 700); }
   return {
     say, ask,
-    observe(list, surface) {
+    async observe(list, surface) {
       if (!list || !list.length) return;
       const first = list[0];
       // pointing over the screen needs the whole screen to be shared (a shared window has no known position on screen)
       const canPoint = outside && surface === 'monitor' && first.fw && first.fh;
-      const fx = canPoint ? first.cx / first.fw : 0, fy = canPoint ? first.cy / first.fh : 0;
+      let fx = canPoint ? first.cx / first.fw : 0, fy = canPoint ? first.cy / first.fh : 0;
+      if (canPoint && bridge && bridge.frameRect) { try { const fr = await bridge.frameRect(first.fw, first.fh); if (fr) { fx = fr.fx + fx * fr.fw; fy = fr.fy + fy * fr.fh; } } catch { /* keep the plain fractions */ } }
       const point = canPoint ? { fx, fy, label: first.kind === 'cheap' ? 'cheap!' : 'pricey' } : null;
       const more = list.length > 1 ? '\n(+' + (list.length - 1) + ' more: ' + list.slice(1).map((x) => x.text.split(' is ')[0].split(' went ')[0]).join(', ') + ')' : '';
       say(first.text + more, first.mood, 14000, []);
@@ -588,7 +589,7 @@ export function initKamo(o) {
     async marks(list, hint, surface, fw, fh) {
       if (!outside || !bridge || !bridge.overlaySend || !list || !list.length) return false;
       let fr = null;
-      try { fr = surface === 'monitor' ? { fx: 0, fy: 0, fw: 1, fh: 1 } : bridge.frameRect ? await bridge.frameRect(fw, fh) : null; } catch { fr = null; }
+      try { fr = bridge.frameRect ? await bridge.frameRect(fw, fh) : (surface === 'monitor' ? { fx: 0, fy: 0, fw: 1, fh: 1 } : null); } catch { fr = surface === 'monitor' ? { fx: 0, fy: 0, fw: 1, fh: 1 } : null; }
       if (!fr) { if (hint) say(hint + (surface === 'window' ? ' (I cannot find the game window on the screen, so no boxes.)' : ''), 'happy', 7000, []); return false; }
       const map = (m) => ({ ...m, x: fr.fx + m.x * fr.fw, y: fr.fy + m.y * fr.fh, w: m.w * fr.fw, h: m.h * fr.fh });
       const shown = list.map(map); lastShown = shown;
