@@ -56,6 +56,8 @@ const TOOLS = [
       addAnswer({ id: q.id, q: q.q, answer: String(a.answer).slice(0, 600), at: Date.now(), remember: a.remember !== false });
       return 'Sent to Kamo: ' + String(a.answer).slice(0, 80);
     } },
+  { name: 'kamo_status', description: 'Technical status saved by the desktop app: build, Kamo provider/model and last Test result, last scan (popup lines, lots, market rows), performance verdict and recent errors. Read this first when something does not work. Never contains keys.', inputSchema: { type: 'object', properties: {} },
+    run() { const f = join(friendDir(), 'kama-status.json'); if (!existsSync(f)) return 'No status file yet: open the desktop app (v69 or later) once.'; return readFileSync(f, 'utf8'); } },
   { name: 'kamo_say', description: 'Make Kamo say something in his speech bubble over the game (short and friendly).', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
     run(_s, a) { addAnswer({ id: 'say:' + Date.now(), answer: String(a.text).slice(0, 600), at: Date.now(), remember: false }); return 'Kamo will say it.'; } },
   { name: 'overview', description: 'Summary of the user\'s Kama Ledger list: item count, budget, waiting prices, stale prices, best craft.', inputSchema: { type: 'object', properties: {} },

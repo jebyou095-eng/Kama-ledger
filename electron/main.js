@@ -89,6 +89,11 @@ ipcMain.handle('mcp:snapshot', (_e, json) => {
     return true;
   } catch (error) { logLine(`snapshot: ${error && error.message}`); return false; }
 });
+// Kamo's status for the connector (kama_status tool): test result, last scan, errors. Never holds a key.
+ipcMain.handle('status:write', (_e, json) => {
+  try { const f = join(app.getPath('userData'), 'kama-status.json'), t = f + '.tmp'; writeFileSync(t, String(json).slice(0, 400000)); renameSync(t, f); return true; }
+  catch (error) { logLine(`status: ${error && error.message}`); return false; }
+});
 // "Ask a friend": Kamo's unanswered questions go to a file Claude can read through the connector; the answers come back in another.
 ipcMain.handle('friend:write', (_e, json) => {
   try { const f = join(app.getPath('userData'), 'kama-questions.json'), t = f + '.tmp'; writeFileSync(t, String(json)); renameSync(t, f); return true; }

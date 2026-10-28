@@ -15,6 +15,7 @@ import { createCapture } from './capture.js';
 import { num, tax, parseLog, runesFor, fixDigits, joinWrapped, normLine, ocrToLines, nk, stitch, parseLoose, normName, effLabel, buildIndex, prepIndex, pickItem, searchItems, lev, suggest, KNOWN } from './core.js';
 import { DEFAULT_HOTKEY, hotkeyLabel, accelFromEvent } from './hotkey.js';
 import { APP_BUILD } from './diag-plan.js';
+import { createStatus } from './status.js';
 import { STEPS as SESS_STEPS, newSession, onEvent as sessOn, report as sessReport } from './session.js';
 import { analyzePanel, cleanTransactionPatch, mergeLedgerHistory, normLine as normalizeTransactionLine, removeLedgerEntry, transactionLines, transactionToLine, updateLedgerEntry } from './transactions.js';
 
@@ -1255,3 +1256,4 @@ kamoRef = initKamo({
   },
 });
 window.klKamo = kamoRef;
+try { window.klStatus = createStatus(window.kamaDesktopCapture || null, APP_BUILD); } catch (e) { /* the status file is optional */ }

@@ -38,6 +38,9 @@
   assert.ok(JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'kama-answers.json'), 'utf8')).answers.some((a) => a.id.startsWith('say:')));
   send({ jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'kamo_answer', arguments: { id: 'nope', answer: 'x' } } });
   assert.equal((await wait(13)).result.isError, true);
+  assert.match(await call(14, 'kamo_status', {}), /No status file yet/);
+  fs.writeFileSync(path.join(path.dirname(file), 'kama-status.json'), JSON.stringify({ build: 'v69', kamoTest: { ok: false, why: 'Groq says: model not found' } }));
+  assert.match(await call(15, 'kamo_status', {}), /Groq says: model not found/);
   p.kill();
   console.log('mcp checks passed');
 })();

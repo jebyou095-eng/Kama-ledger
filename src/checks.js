@@ -56,7 +56,7 @@ export function createChecks(getEnv) {
       perfLast = await P.runPerf({ seconds: 4, status: function (t) { st.textContent = t; }, kamoEl: document.querySelector('.kamo'), info: function () { return { scanning: !!getEnv().scanning }; } });
       var r = perfLast.result, tag = { smooth: 'SMOOTH', ok: 'OK, small hiccups', laggy: 'LAGGY' }[r.verdict];
       out.textContent = 'Verdict: ' + tag + '\n' + r.findings.map(function (x) { return '• ' + x; }).join('\n') + (r.tips.length ? '\n\nWhat to do:\n' + r.tips.map(function (x) { return '→ ' + x; }).join('\n') : '');
-      st.textContent = 'Done.'; $('perf-save').hidden = false;
+      st.textContent = 'Done.'; $('perf-save').hidden = false; try { if (window.klStatus) window.klStatus.note('perf', { verdict: r.verdict, findings: r.findings, tips: r.tips }); } catch (e) { /* optional */ }
     } catch (e) { st.textContent = 'Check failed: ' + e.message; }
     btn.disabled = false;
   });

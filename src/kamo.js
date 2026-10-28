@@ -565,7 +565,7 @@ export function initKamo(o) {
     pv.addEventListener('change', show); pk.addEventListener('change', keep); pm.addEventListener('change', keep); show();
     if (pt) pt.addEventListener('click', async () => {
       await keep(); if (!cbridge()) { po.textContent = 'Only in the desktop app.'; return; }
-      po.textContent = 'Testing…'; const r = await cloud.test(pv.value, cloudCfg()); po.textContent = (r.ok ? '✓ ' : '✗ ') + r.why;
+      po.textContent = 'Testing…'; const r = await cloud.test(pv.value, cloudCfg()); po.textContent = (r.ok ? '✓ ' : '✗ ') + r.why; try { if (window.klStatus) window.klStatus.note('kamoTest', { provider: pv.value, model: pm.value || '(default)', keyHeld: !!pk.value, ok: r.ok, why: r.why, at: new Date().toISOString() }); } catch { /* optional */ }
     });
   }
   if (pc) pc.addEventListener('click', () => { if (hidden) setHidden(false); say(cardText(), 'happy', 22000, []); });
