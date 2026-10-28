@@ -1,0 +1,14 @@
+[
+  { "id": "unit", "title": "Price per unit", "compute": "unit", "keywords": ["each", "per unit", "unit price", "par unite", "l'unite", "chacun", "la piece"], "numbers": ["total", "qty"],
+    "reply": "{total} for {qty} is {unit} each.",
+    "examples": [{ "ask": "7 771 for 100, how much each?", "reply": "7 771 for 100 is 77,71 each." }, { "ask": "54995 pour 1000 prix par unite", "reply": "54 995 for 1 000 is 55 each." }] },
+  { "id": "change", "title": "Percent change", "compute": "change", "keywords": ["percent", "increase", "decrease", "variation", "evolution", "how much did it change", "% change"], "numbers": ["from", "to"],
+    "reply": "From {from} to {to} is {pct} ({diff}).",
+    "examples": [{ "ask": "percent change from 79 to 136", "reply": "From 79 to 136 is +72,15 % (+57)." }, { "ask": "variation de 200 a 150", "reply": "From 200 to 150 is -25 % (-50)." }] },
+  { "id": "profit", "title": "Resale profit", "compute": "profit", "keywords": ["profit", "margin", "marge", "benefice", "gain"], "numbers": ["buy", "sell", "qty?"],
+    "reply": "Per unit: {net} after {taxText}. For {qty}: {total}.",
+    "examples": [{ "ask": "profit if I buy at 1000 and sell at 1500, 10 units, tax 2%", "reply": "Per unit: +470 after 2 % tax. For 10: +4 700." }, { "ask": "marge achat 500 vente 450", "reply": "Per unit: -50 after no tax. For 1: -50." }] },
+  { "id": "breakeven", "title": "Break-even sell price", "compute": "breakeven", "keywords": ["break even", "breakeven", "seuil de rentabilite", "minimum sell", "sell at least"], "numbers": ["buy"],
+    "reply": "To not lose money on a purchase at {buy} with {taxText}, sell at {sell} or more.",
+    "examples": [{ "ask": "break even if I bought at 980 with 2% tax", "reply": "To not lose money on a purchase at 980 with 2 % tax, sell at 1 000 or more." }] }
+]
