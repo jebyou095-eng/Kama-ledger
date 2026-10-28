@@ -108,5 +108,7 @@ const assert = require('node:assert/strict');
   const { parsePopup } = await import('../src/market.js');
   const p = parsePopup(['Noix de Kokoko', 'Niv. 50 - Fruit', 'Prixmoyen:69  l&', 'Quantité en inventaire : 0']);
   require('assert').equal(p.avg, 69, 'average read even when OCR drops the space in "Prix moyen"');
+  const a = parsePopup(['X', 'Prix moyen : 6B', 'Y']).avg, b = parsePopup(['X', 'Prix moyen : 79 S']).avg;
+  require('assert').equal(a, 68, 'B read as 8'); require('assert').equal(b, 79, 'trailing coin S is not a digit');
   console.log('market popup average check passed');
 })();

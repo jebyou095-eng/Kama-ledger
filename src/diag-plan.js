@@ -1,5 +1,5 @@
 // What the diagnostics button does. Claude edits this file between conversations: the person only clicks the button.
-export const APP_BUILD = 'v67';
+export const APP_BUILD = 'v68';
 export const PLAN = {
   id: '2026-10-21-a',
   asks: 'Calibrate on real screens: does the app find the panels, read names/levels/prices, and how long does each step take?',
