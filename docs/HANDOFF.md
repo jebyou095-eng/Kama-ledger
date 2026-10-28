@@ -13,7 +13,7 @@ Paste or point the new session at this file. It says where the project stands an
 Live voice moved to a worker; Performance check card + automatic lag guard; main.js split started (livescan, checks, capture, core, hotkey); fast voice-engine download (curl);
 Groq test shows the provider's reason; overlay marks use the overlay's real bounds; overlay hidden from screen capture; popup average tolerates OCR dropping the space.
 Still unverified on the real PC: v63 scan accuracy with the overlay excluded from capture, live voice in Electron, bat download progress, Groq model access (his project blocked models; he was creating a new Groq project).
-Next: finish splitting main.js (review/history screens, then queue + OCR), Step 2 skills-as-data, move the API key to Electron safeStorage (ask first), delete legacy kama-ledger.html (ask first).
+Next: finish splitting main.js (review/history screens, then queue + OCR), Step 2 skills-as-data, (done in v64: API key in Electron safeStorage; legacy kama-ledger.html deleted).
 
 ## What exists (v50)
 - **Scanner**: Tesseract OCR on the shared game screen; market list, item popups (multi-offer), tooltip/jet detection (`src/jet.js`), equipment pricing by jet, filters. Market **card detector** `src/cards.js` + `marketCards()` in `src/scan.js` gives one highlight box per card with the gaps left empty.

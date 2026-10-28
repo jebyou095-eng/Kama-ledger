@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, screen, session } from 'electron';
+import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, screen, session, safeStorage } from 'electron';
 import { appendFileSync, existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,9 +104,28 @@ const BRAIN_URLS = {
   sambanova: 'https://api.sambanova.ai/v1/chat/completions',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
 };
+// API keys are kept encrypted with the operating system (Windows DPAPI) in userData/brain-keys.json; the page only ever holds the placeholder.
+const KEY_HELD = 'stored-securely';
+const keyFile = () => join(app.getPath('userData'), 'brain-keys.json');
+function readKeys() { try { return existsSync(keyFile()) ? JSON.parse(readFileSync(keyFile(), 'utf8')) : {}; } catch { return {}; } }
+function storedKey(provider) {
+  try { const b = readKeys()[provider]; return b && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(b, 'base64')) : ''; } catch { return ''; }
+}
+ipcMain.handle('brain:key-set', (_e, provider, key) => {
+  try {
+    if (!BRAIN_URLS[provider] || typeof key !== 'string' || key.length > 400) return { ok: false };
+    const all = readKeys();
+    if (!key.trim()) delete all[provider];
+    else { if (!safeStorage.isEncryptionAvailable()) return { ok: false, reason: 'no secure storage here' }; all[provider] = safeStorage.encryptString(key.trim()).toString('base64'); }
+    const f = keyFile(), t = f + '.tmp'; writeFileSync(t, JSON.stringify(all)); renameSync(t, f);
+    return { ok: true, held: !!all[provider] };
+  } catch (error) { logLine('brain:key-set: ' + (error && error.message)); return { ok: false }; }
+});
 ipcMain.handle('brain:chat', async (_e, req) => {
   const url = req && BRAIN_URLS[req.provider];
-  const key = req && typeof req.key === 'string' ? req.key.trim() : '', model = req && typeof req.model === 'string' ? req.model.trim() : '';
+  let key = req && typeof req.key === 'string' ? req.key.trim() : '';
+  if (key === KEY_HELD) { key = storedKey(req.provider); if (!key) return { ok: false, status: 401 }; }   // not held any more (new Windows profile?): ask for the key again
+  const model = req && typeof req.model === 'string' ? req.model.trim() : '';
   const msgs = req && Array.isArray(req.messages) ? req.messages : [];
   if (!url || key.length < 8 || key.length > 400 || !/^[\w.:\/-]{1,90}$/.test(model) || !msgs.length || msgs.length > 3) return { ok: false, error: 'bad request' };
   const messages = msgs.map((m) => ({ role: m && m.role === 'system' ? 'system' : 'user', content: String(m && m.content || '').slice(0, 2500) }));

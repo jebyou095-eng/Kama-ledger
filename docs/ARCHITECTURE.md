@@ -41,4 +41,5 @@ Check a moved file for undefined names before shipping; `tests/*.cjs` exist for 
 - Overlay marks are mapped against the overlay's REAL bounds (`capture:frame-rect`); Windows can shrink it to the work area.
 - Windows PowerShell `Invoke-WebRequest` with its progress bar took 30+ minutes for 90 MB: the start script uses `curl.exe`.
 - The live voice runs in `tts-worker.js` (off the page); the first live sentence only wakes it up.
-- `tests/run-tests.cjs` once ran a stale copy of the core inside `kama-ledger.html`; it now runs `src/core.js`. `kama-ledger.html` is the old single-file app, unused (candidate for deletion, ask the user).
+- `tests/run-tests.cjs` once ran a stale copy of the core inside `kama-ledger.html`; it now runs `src/core.js`. `kama-ledger.html` (the old single-file app) was deleted in v64.
+- API keys live encrypted in userData/brain-keys.json (Electron safeStorage); the page keeps only the placeholder `stored-securely`. Keys from older versions migrate on first start.

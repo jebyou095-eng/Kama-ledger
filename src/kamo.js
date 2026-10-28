@@ -549,10 +549,22 @@ export function initKamo(o) {
     const saveCloud = (c) => store('kl-kamo-cloud', JSON.stringify(c));
     PROVIDERS.forEach((p) => { const op = document.createElement('option'); op.value = p.id; op.textContent = p.label; pv.appendChild(op); });
     const show = () => { const c = cloudCfg(), p = PROVIDERS.find((x) => x.id === pv.value) || PROVIDERS[0]; pk.value = c.keys[p.id] || ''; pm.value = c.models[p.id] || p.model; if (ph) ph.textContent = 'Get a free key: ' + p.help; if (po) po.textContent = ''; };
-    const keep = () => { const c = cloudCfg(), id = pv.value, p = PROVIDERS.find((x) => x.id === id); c.keys[id] = pk.value.trim(); c.models[id] = pm.value.trim() && pm.value.trim() !== p.model ? pm.value.trim() : ''; saveCloud(c); };
+    const HELD = 'stored-securely';   // what the page keeps instead of the key once the desktop app holds it encrypted
+    const secure = () => (bridge && bridge.brainKeySet ? bridge : null);
+    const keep = async () => {
+      const c = cloudCfg(), id = pv.value, p = PROVIDERS.find((x) => x.id === id), typed = pk.value.trim();
+      c.models[id] = pm.value.trim() && pm.value.trim() !== p.model ? pm.value.trim() : '';
+      if (typed === HELD) { saveCloud(c); return; }
+      if (secure()) {
+        try { const r = await secure().brainKeySet(id, typed); if (r && r.ok) { c.keys[id] = typed ? HELD : ''; pk.value = c.keys[id]; saveCloud(c); return; } } catch { /* fall through to the old way */ }
+      }
+      c.keys[id] = typed; saveCloud(c);
+    };
+    // keys saved by an older version move into the encrypted store once
+    (async () => { if (!secure()) return; const c = cloudCfg(); let moved = false; for (const id of Object.keys(c.keys)) { const v = (c.keys[id] || '').trim(); if (v && v !== HELD) { try { const r = await secure().brainKeySet(id, v); if (r && r.ok) { c.keys[id] = HELD; moved = true; } } catch { /* keep as is */ } } } if (moved) { saveCloud(c); show(); } })();
     pv.addEventListener('change', show); pk.addEventListener('change', keep); pm.addEventListener('change', keep); show();
     if (pt) pt.addEventListener('click', async () => {
-      keep(); if (!cbridge()) { po.textContent = 'Only in the desktop app.'; return; }
+      await keep(); if (!cbridge()) { po.textContent = 'Only in the desktop app.'; return; }
       po.textContent = 'Testing…'; const r = await cloud.test(pv.value, cloudCfg()); po.textContent = (r.ok ? '✓ ' : '✗ ') + r.why;
     });
   }
