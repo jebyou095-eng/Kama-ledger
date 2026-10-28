@@ -7,7 +7,7 @@ import { findItems } from './kamo-ai.js';
 export const PROVIDERS = [
   { id: 'groq', label: 'Groq', model: 'llama-3.3-70b-versatile', help: 'console.groq.com → API Keys' },
   { id: 'sambanova', label: 'SambaNova', model: 'Meta-Llama-3.3-70B-Instruct', help: 'cloud.sambanova.ai → API' },
-  { id: 'gemini', label: 'Gemini', model: 'gemini-2.0-flash', help: 'aistudio.google.com → Get API key' },
+  { id: 'gemini', label: 'Gemini', model: 'gemini-2.5-flash', help: 'aistudio.google.com → Get API key' },
 ];
 
 const SYSTEM = 'You are Kamo, a cute little gold coin who helps a player track their Dofus market (prices in kamas). '
