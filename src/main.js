@@ -2,6 +2,8 @@ import './style.css';
 import JSZip from 'jszip';
 import { initTheme } from './theme.js';
 import { initKamo } from './kamo.js';
+import { createGraphStore } from './graph-store.js';
+import { analyzeGraph } from './graph-math.js';
 import { initItems } from './items-ui.js';
 import { parseLots } from './items.js';
 import { parseTooltip } from './jet.js';
@@ -1097,6 +1099,36 @@ $('scan-file').addEventListener('change', async function () {
   for (var i = 0; i < files.length; i++) {
     var url = await new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(files[i]); });
     await scanFrame(await scan.frameFromUrl(url));
+  }
+});
+// Price charts ("Cours du marché"): Kamo reads the curve, the median and the average, and remembers them per item and span.
+try { window.klGraphs = createGraphStore(function () { return localStorage.getItem('kl-graphs') || ''; }, function (t) { localStorage.setItem('kl-graphs', t); }); } catch (e) { /* storage is optional */ }
+async function readChartFrame(frame) {
+  var st = $('scan-status'); st.textContent = 'Reading the price chart…';
+  try {
+    var G = await import('./graph.js'), r = await G.readGraph(frame);
+    if (!r || !r.points.length) { st.textContent = 'No price chart found. Open "Cours du marché" in the game and try again.'; return; }
+    var snap = P ? snapItem(P, r.name, r.level, '') : null;
+    if (snap && snap.score >= 0.85 && snap.item) r.name = snap.item[1] || r.name; else r.named = false;
+    var a = analyzeGraph(r), f = function (v) { return v ? Number(v).toLocaleString('fr-FR') : '?'; };
+    var head = (r.name || '?') + ', ' + (r.span || '?') + ' chart: median ' + f(r.median) + ', average ' + f(r.avg) + ', ' + f(r.sold) + ' sold.';
+    if (window.klStatus) window.klStatus.note('lastGraph', { name: r.name, span: r.span, median: r.median, avg: r.avg, sold: r.sold, sure: r.sure, avgCheck: r.avgCheck, axis: r.axis, points: r.points.length, raw: r.raw && r.raw.stats });
+    if (!r.sure || r.named === false) { st.textContent = head + ' I am not sure I read it right' + (r.named === false ? ' (item not recognised)' : '') + ', so I did not keep it.'; return; }
+    window.klGraphs.add(r, Date.now());
+    var msg = head + (a && a.text ? ' ' + a.text : ''); st.textContent = msg + ' Saved: ask Kamo about it.';
+    if (kamoRef && kamoRef.say) kamoRef.say(msg, 'happy', 24000, []);
+  } catch (e) { st.textContent = 'Could not read the chart: ' + (e && e.message || e); if (window.klStatus) window.klStatus.error('chart: ' + (e && e.message || e)); }
+}
+$('graph-now').addEventListener('click', function () {
+  var frame = stream ? scan.frameFromVideo($('vid')) : stillFrame;
+  if (!frame) { $('scan-status').textContent = 'Nothing to read: share the game window first.'; return; }
+  readChartFrame(frame);
+});
+$('graph-file').addEventListener('change', async function () {
+  var files = [].slice.call(this.files); this.value = '';
+  for (var i = 0; i < files.length; i++) {
+    var url = await new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.readAsDataURL(files[i]); });
+    await readChartFrame(await scan.frameFromUrl(url));
   }
 });
 $('scan-now').addEventListener('click', function () { scanNow(); });

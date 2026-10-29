@@ -11,6 +11,7 @@ import { createNotebook } from './kamo-notebook.js';
 import { PROVIDERS, createCascade, pickContext } from './kamo-cloud.js';
 import { runSkill } from './kamo-skills.js';
 import { diagnose, speak } from './kamo-preflight.js';
+import { describe as describeGraph } from './graph-store.js';
 import { VOICES, analyzeHabits, analyzeMarket, createVoice, curiousHint, dayKey, fmt, normalizeMem, planNext, recapVars, tabName, tabTip, understand } from './kamo-brain.js';
 
 export const SVG = `
@@ -360,6 +361,7 @@ export function initKamo(o) {
   }
   function answer(raw) {
     if (/\b(check yourself|self.?check|what do you need|diagnose yourself|auto.?check)\b/i.test(String(raw))) { const r = selfCheck(); return { msg: r.text, m: r.ok ? 'happy' : 'think', acts: [] }; }
+    try { const gs = window.klGraphs, ge = gs && gs.forQuestion(raw); if (ge && ge.length && /\b(graph|chart|trend|trending|courbe|tendance|cours|spike|volatil\w*|worth|buy|sell|achet\w*|vend\w*|price|how is|how.s)\b/i.test(String(raw))) { const t = describeGraph(ge, Date.now()); if (t) { nb.count('rules'); return { msg: t, m: 'happy', acts: [] }; } } } catch { /* optional */ }   // what he learned from the price charts
     const sk = runSkill(raw); if (sk) { nb.count('rules'); return { msg: sk.text, m: 'happy', acts: [] }; }   // offline skills: calculations that need numbers in the question
     const ai = parseAsk(raw, (o.items.snapshot ? o.items.snapshot() : []).map((r) => ({ id: r.id, name: r.name })));
     if (ai) return analyst(ai, raw);
