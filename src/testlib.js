@@ -8,9 +8,12 @@ export const CATS = [
 ];
 export const MIN_SIZES = 2;   // popups and charts must be seen at two window sizes at least
 
+// the tags of one screenshot (older saves had a single category)
+export const tagsOf = (it) => (it && Array.isArray(it.tags) && it.tags.length ? it.tags : it && it.cat ? [it.cat] : ['empty']);
+
 export function progress(items) {
   const by = {}; CATS.forEach((c) => { by[c.id] = { id: c.id, label: c.label, hint: c.hint, min: c.min, best: c.best, n: 0, sizes: {} }; });
-  (items || []).forEach((it) => { const r = by[it.cat]; if (!r) return; r.n++; const s = it.w + 'x' + it.h; r.sizes[s] = (r.sizes[s] || 0) + 1; });
+  (items || []).forEach((it) => { const s = it.w + 'x' + it.h; tagsOf(it).forEach((cat) => { const r = by[cat]; if (!r) return; r.n++; r.sizes[s] = (r.sizes[s] || 0) + 1; }); });   // a screenshot counts once for every tag it has
   return CATS.map((c) => {
     const r = by[c.id], need = Math.max(0, c.min - r.n), sizes = Object.keys(r.sizes).length;
     const wantSizes = c.id === 'popup' || c.id === 'chart';
@@ -22,14 +25,14 @@ export function summary(items) {
   return progress(items).map((p) => p.label + ': ' + p.n + ' / ' + p.min + (p.done ? ' ✓' : ' (' + p.need + ' more)') + (p.needSizes ? ' — also needs a second window size' : '')).join('\n');
 }
 
-// guess from what the app's own detector found: keys of the detected profile, and whether the chart reader was sure
+// guess from what the app's own detector found: keys of the detected profile, and whether the chart reader was sure. Returns every tag that applies.
 export function suggest(profileKeys, chartSure) {
-  const k = new Set(profileKeys || []);
-  if (chartSure) return 'chart';
-  if (k.has('popup')) return 'popup';
-  if (k.has('tooltip')) return 'tooltip';
-  if (k.has('market')) return 'market';
-  return 'empty';
+  const k = new Set(profileKeys || []), out = [];
+  if (k.has('popup')) out.push('popup');
+  if (k.has('market')) out.push('market');
+  if (chartSure) out.push('chart');
+  if (k.has('tooltip')) out.push('tooltip');
+  return out.length ? out : ['empty'];
 }
 
 // ---- a minimal zip (stored, not compressed: PNGs are already compressed) ----

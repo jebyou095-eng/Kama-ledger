@@ -1,5 +1,5 @@
 // The "Test library" card: add screenshots, put each in a category, see what is still needed, download everything as one zip.
-import { CATS, progress, suggest, buildZip } from './testlib.js';
+import { CATS, progress, suggest, tagsOf, buildZip } from './testlib.js';
 
 const DB = 'kama-testlib', ST = 'shots';
 function open() {
@@ -33,14 +33,25 @@ export async function initTestLib(env) {
       const card = document.createElement('div'); card.className = 'tl-item';
       const u = URL.createObjectURL(it.blob); urls.push(u);
       const img = document.createElement('img'); img.src = u; img.alt = it.name; img.loading = 'lazy';
-      const meta = document.createElement('div'); meta.className = 'mu'; meta.textContent = it.w + '×' + it.h + (it.suggested && it.suggested !== it.cat ? ' · I guessed ' + it.suggested : '');
-      const s = document.createElement('select'); CATS.forEach((c) => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label; if (c.id === it.cat) o.selected = true; s.appendChild(o); });
-      s.addEventListener('change', async () => { it.cat = s.value; await run(db, 'readwrite', (st) => st.put(it)); render(); });
+      const meta = document.createElement('div'); meta.className = 'mu'; meta.textContent = it.w + '×' + it.h;
+      const tags = document.createElement('div'); tags.className = 'tl-tags';
+      const have = tagsOf(it);
+      CATS.forEach((c) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tl-tag' + (have.includes(c.id) ? ' on' : ''); b.textContent = c.label; b.setAttribute('aria-pressed', have.includes(c.id) ? 'true' : 'false'); b.title = c.hint;
+        b.addEventListener('click', async () => {
+          let next = have.includes(c.id) ? have.filter((x) => x !== c.id) : have.concat([c.id]);
+          if (c.id !== 'empty' && next.includes('empty') && next.length > 1) next = next.filter((x) => x !== 'empty');   // a real tag replaces "other"
+          if (c.id === 'empty' && next.includes('empty')) next = ['empty'];                                            // "other" stands alone
+          if (!next.length) next = ['empty'];
+          it.tags = next; delete it.cat; await run(db, 'readwrite', (st) => st.put(it)); render();
+        });
+        tags.appendChild(b);
+      });
       const n = document.createElement('input'); n.type = 'text'; n.placeholder = 'note (item name, what is special)'; n.value = it.note || ''; n.maxLength = 120;
       n.addEventListener('change', () => { it.note = n.value; run(db, 'readwrite', (st) => st.put(it)); });
       const del = document.createElement('button'); del.type = 'button'; del.className = 'btn'; del.textContent = 'Remove';
       del.addEventListener('click', async () => { await run(db, 'readwrite', (st) => st.delete(it.id)); render(); });
-      card.append(img, meta, s, n, del); list.appendChild(card);
+      card.append(img, meta, tags, n, del); list.appendChild(card);
     });
   }
 
@@ -51,7 +62,7 @@ export async function initTestLib(env) {
       let keys = []; try { keys = Object.keys((await scan.autoDetect(frame)) || {}); } catch (e) { keys = []; } finally { scan.forgetProfile(); }
       let sure = false;
       if (!keys.some((k) => k === 'popup' || k === 'tooltip')) { try { const g = await (await import('./graph.js')).readGraph(frame); sure = !!(g && g.sure); } catch (e) { sure = false; } }
-      return { cat: suggest(keys, sure), w: frame.width, h: frame.height };
+      return { tags: suggest(keys, sure), w: frame.width, h: frame.height };
     } finally { URL.revokeObjectURL(url); }
   }
 
@@ -61,19 +72,19 @@ export async function initTestLib(env) {
       note('Adding ' + (i + 1) + ' of ' + files.length + '…');
       try {
         const g = await guess(files[i]);
-        await run(db, 'readwrite', (st) => st.add({ cat: chosen === 'auto' ? g.cat : chosen, suggested: g.cat, w: g.w, h: g.h, name: files[i].name, note: '', blob: files[i], at: Date.now() }));
+        await run(db, 'readwrite', (st) => st.add({ tags: chosen === 'auto' ? g.tags : [chosen], suggested: g.tags, w: g.w, h: g.h, name: files[i].name, note: '', blob: files[i], at: Date.now() }));
       } catch (e) { note('Could not add ' + files[i].name + '.'); }
     }
-    note('Added ' + files.length + '. Check each category below: the guess can be wrong.'); render();
+    note('Added ' + files.length + '. Check the tags of each one: the guess can be wrong.'); render();
   });
 
   $('tl-zip').addEventListener('click', async () => {
     const items = (await all()).sort((a, b) => a.id - b.id); if (!items.length) { note('Nothing to download yet.'); return; }
     const files = [], counts = {}, manifest = [];
     for (const it of items) {
-      counts[it.cat] = (counts[it.cat] || 0) + 1;
-      const name = it.cat + '/' + it.cat + '-' + String(counts[it.cat]).padStart(3, '0') + '.png', data = new Uint8Array(await it.blob.arrayBuffer());
-      files.push({ name, data }); manifest.push({ file: name, cat: it.cat, w: it.w, h: it.h, note: it.note || '', original: it.name, guessed: it.suggested });
+      const tg = tagsOf(it), first = tg[0]; counts[first] = (counts[first] || 0) + 1;
+      const name = first + '/' + first + '-' + String(counts[first]).padStart(3, '0') + '.png', data = new Uint8Array(await it.blob.arrayBuffer());
+      files.push({ name, data }); manifest.push({ file: name, tags: tg, w: it.w, h: it.h, note: it.note || '', original: it.name, guessed: it.suggested || null });
     }
     const enc = new TextEncoder(); files.push({ name: 'manifest.json', data: enc.encode(JSON.stringify({ app: env.build || '', files: manifest }, null, 1)) });
     const blob = new Blob([buildZip(files)], { type: 'application/zip' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'kama-test-library.zip'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);

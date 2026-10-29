@@ -783,3 +783,6 @@ body.overlay main { display: none; }
 .tl-item { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--bd); border-radius: 10px; background: var(--card); }
 .tl-item img { width: 100%; height: 90px; object-fit: cover; border-radius: 6px; }
 .tl-item input, .tl-item select { width: 100%; font: inherit; }
+.tl-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tl-tag { font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--bd); background: var(--card); color: var(--mu); cursor: pointer; }
+.tl-tag.on { background: var(--ac); border-color: var(--ac); color: #fff; }
