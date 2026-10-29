@@ -97,7 +97,7 @@ export function createLiveScan(getEnv) {
           // the listing under the mouse: find its lit-up row, read just that row
           var hb = prof.popup ? scan.hoveredBand(frame, prof.popup) : null, hline = hb ? await scan.readText(frame, hb, 'white') : [];
           var hl = hb ? parseLots(hline.join('\n'), lastAvg).list : [], hp = hl.length && hl[0].size === 1 ? hl[0].total : null;
-          window.klLastScan = Object.assign(window.klLastScan || {}, { tooltip: { lines: tl, tip: tip, rowLine: hline, price: hp } });
+          window.klLastScan = Object.assign(window.klLastScan || {}, { tooltip: { lines: tl, tip: tip, rowLine: hline, price: hp, item: ti, at: Date.now() } });
           info.tooltip = { name: ti[1], statut: tip.statut, price: hp };
           var jr = await itemsUi.applyJet({ a: ti, tip: tip, price: hp });
           marks.push({ x: prof.tooltip.x, y: prof.tooltip.y, w: prof.tooltip.w, h: prof.tooltip.h, kind: jr.modified ? 'look' : 'ok', label: jr.modified ? 'exo / forged' : 'clean roll' });

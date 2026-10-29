@@ -12,6 +12,7 @@ import { PROVIDERS, createCascade, pickContext } from './kamo-cloud.js';
 import { runSkill } from './kamo-skills.js';
 import { diagnose, speak } from './kamo-preflight.js';
 import { describe as describeGraph } from './graph-store.js';
+import { rollOf, sellAdvice } from './jetprice.js';
 import { VOICES, analyzeHabits, analyzeMarket, createVoice, curiousHint, dayKey, fmt, normalizeMem, planNext, recapVars, tabName, tabTip, understand } from './kamo-brain.js';
 
 export const SVG = `
@@ -359,8 +360,21 @@ export function initKamo(o) {
     try { if (window.klStatus) window.klStatus.note('selfCheck', { ok: r.ok, items: list.map((x) => x.tell) }); } catch { /* optional */ }
     return r;
   }
+  // "Is it easy to sell? What price for my jet?" Uses the last hover box (the jet), the price charts he has read and the scanned price.
+  function sellAnswer(raw) {
+    const gs = window.klGraphs, tt = window.klLastScan && window.klLastScan.tooltip, fresh = !!(tt && tt.item && tt.tip && Date.now() - (tt.at || 0) < 30 * 60000);
+    let ge = gs ? gs.forQuestion(raw) : [], name = ge[0] && ge[0].name;
+    if (!name && fresh) name = tt.item[1];
+    if (!name) return null;
+    if (!ge.length && gs) ge = gs.forQuestion(name);
+    const mine = fresh && String(tt.item[1]).toLowerCase() === String(name).toLowerCase();   // the jet on screen belongs to this item
+    const info = o.items.lookup(name), gi = mine && o.items.gameItem ? o.items.gameItem(tt.item[0]) : null;
+    const roll = mine && gi ? rollOf(tt.tip.stats, gi.effects, gi.names) : null;
+    return sellAdvice({ name, chart: ge[0] || null, roll, floor: info && info.price, floorDays: info ? info.days : null });
+  }
   function answer(raw) {
     if (/\b(check yourself|self.?check|what do you need|diagnose yourself|auto.?check)\b/i.test(String(raw))) { const r = selfCheck(); return { msg: r.text, m: r.ok ? 'happy' : 'think', acts: [] }; }
+    if (/\b(easy|hard)\b.*\b(sell|sold)\b|\b(sell|sold)\b.*\b(easy|hard)\b|\bmy jets?\b|\bjet\b.*\b(price|worth|sell)\b|\b(price|sell|worth)\b.*\bjet\b|\bhow (much|to price)\b.*\b(sell|ask)\b/i.test(String(raw))) { try { const t = sellAnswer(raw); if (t) { nb.count('rules'); return { msg: t, m: 'happy', acts: [] }; } } catch { /* optional */ } }
     try { const gs = window.klGraphs, ge = gs && gs.forQuestion(raw); if (ge && ge.length && /\b(graph|chart|trend|trending|courbe|tendance|cours|spike|volatil\w*|worth|buy|sell|achet\w*|vend\w*|price|how is|how.s)\b/i.test(String(raw))) { const t = describeGraph(ge, Date.now()); if (t) { nb.count('rules'); return { msg: t, m: 'happy', acts: [] }; } } } catch { /* optional */ }   // what he learned from the price charts
     const sk = runSkill(raw); if (sk) { nb.count('rules'); return { msg: sk.text, m: 'happy', acts: [] }; }   // offline skills: calculations that need numbers in the question
     const ai = parseAsk(raw, (o.items.snapshot ? o.items.snapshot() : []).map((r) => ({ id: r.id, name: r.name })));

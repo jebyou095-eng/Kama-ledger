@@ -689,7 +689,9 @@ export function initItems(env) {
   }
 
   const snapshot = () => everyRec().map((r) => ({ id: r.id, name: r.name, kind: r.kind, price: r.price || null, priceAt: r.priceAt || null, history: r.history || [], jetClean: r.jetClean || null, jetSpecial: r.jetSpecial || null }));
-  return { exportSnapshot, snapshot, summary, acceptClean, observeMarket, topCrafts, oldestPrices, lookup, setAutoAccept, isAutoAccept: () => autoAccept,
+  // the game's own data for one item: its stat ranges and the stat names, for judging a roll
+  function gameItem(id) { const P = env.getP(), row = P && P.byId && P.byId[id]; return row ? { name: row[1], effects: row[5] || [], names: (P.idx && P.idx.effs) || P.effs || {} } : null; }
+  return { gameItem, exportSnapshot, snapshot, summary, acceptClean, observeMarket, topCrafts, oldestPrices, lookup, setAutoAccept, isAutoAccept: () => autoAccept,
     nameOf: (id) => { const r = items[id] || ingredients[id]; return r ? r.name : ''; },
     ignore: (id) => { ignored.add(id); saveIgnored(); }, budgetValue: () => (budget ? budget.value : null), openGraph, stagePopup, fillIcons, gameIcon, load, render, add, itemByAvg: (avg, level) => { if (!(avg > 0)) return null; const hit = Object.entries(items).filter(([, r]) => r && r.price > 0 && Math.abs(r.price - avg) / avg < 0.01 && (!Number.isFinite(level) || !r.level || r.level === level)); return hit.length === 1 ? hit[0][0] : null; }, applyMarket, applyPopup, applyJet, applyChart, addItemRow, setBudget, logScan, loadScanState, itemByName: (n) => Object.values(items).concat(Object.values(ingredients)).find((r) => env.normName(r.name) === env.normName(n)) };
 }
