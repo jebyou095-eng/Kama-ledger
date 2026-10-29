@@ -120,6 +120,15 @@
           <div id="profile-list"></div>
           <div class="row"><label class="btn">Load a screenshot to draw on…<input id="scan-still" type="file" accept="image/*" hidden></label></div>
         </details>
+        <details class="card fold" id="testlib">
+          <summary>Test library (screenshots for Claude to test with)</summary>
+          <p class="mu">Add screenshots of the game, one category at a time (or let me guess). They stay on this computer until you download them. Then send the zip to Claude: it tests every change on them. Keep Kamo's ring and bubbles out of the picture.</p>
+          <div id="tl-needs"></div>
+          <div class="row"><label class="mu">Category for the new files <select id="tl-cat"><option value="auto">I guess it (check after)</option></select></label>
+            <label class="btn">Add screenshots…<input id="tl-file" type="file" accept="image/*" multiple hidden></label>
+            <button class="btn primary-button" id="tl-zip" type="button">Download library (.zip)</button><button class="btn" id="tl-clear" type="button">Remove all</button><span id="tl-status" class="mu" aria-live="polite"></span></div>
+          <div id="tl-list" class="tl-grid"></div>
+        </details>
         <details class="card fold">
           <summary>Performance check</summary>
           <p class="mu">Measures smoothness for about 15 seconds (normal, Kamo hidden, animations paused) and tells you what costs the most. Runs only when you press the button; nothing leaves your computer.</p>

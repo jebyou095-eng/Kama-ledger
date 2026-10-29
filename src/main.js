@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { initTheme } from './theme.js';
 import { initKamo } from './kamo.js';
 import { createGraphStore } from './graph-store.js';
+import { initTestLib } from './testlib-ui.js';
 import { analyzeGraph } from './graph-math.js';
 import { initItems } from './items-ui.js';
 import { parseLots } from './items.js';
@@ -1289,3 +1290,4 @@ kamoRef = initKamo({
 });
 window.klKamo = kamoRef;
 try { window.klStatus = createStatus(window.kamaDesktopCapture || null, APP_BUILD); } catch (e) { /* the status file is optional */ }
+try { initTestLib({ $: $, scan: scan, build: APP_BUILD }); } catch (e) { /* the test library is optional */ }

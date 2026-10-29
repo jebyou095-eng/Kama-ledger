@@ -774,3 +774,12 @@ body.overlay main { display: none; }
 /* auto calm mode (set by the lag guard): pause the decorative idle animations, keep movement */
 .calm .kamo-svg *, .calm .kamo-bubble * { animation-play-state: paused !important; }
 .calm *, .calm *::before, .calm *::after { scroll-behavior: auto !important; }
+
+/* test library card */
+.tl-need { margin: 0 0 10px; }
+.tl-bar { height: 6px; border-radius: 4px; background: var(--ac-soft); overflow: hidden; margin: 3px 0; }
+.tl-bar i { display: block; height: 100%; background: var(--ac); }
+.tl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+.tl-item { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--bd); border-radius: 10px; background: var(--card); }
+.tl-item img { width: 100%; height: 90px; object-fit: cover; border-radius: 6px; }
+.tl-item input, .tl-item select { width: 100%; font: inherit; }
