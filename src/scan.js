@@ -57,7 +57,7 @@ export const textLines = (data) => String(data.text || '').split(/\r?\n/).map((l
 function cropScaled(src, box, k) {
   const c = document.createElement('canvas');
   c.width = Math.max(4, Math.round(box.w * k)); c.height = Math.max(4, Math.round(box.h * k));
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true });
   g.imageSmoothingQuality = 'high';
   g.drawImage(src, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
   return c;
@@ -65,7 +65,7 @@ function cropScaled(src, box, k) {
 
 // Light, uncoloured pixels (white UI text) become black on white. Gold coins, coloured icons and the dark panel disappear.
 export function whiteText(src, box, k, bias) {
-  const c = cropScaled(src, box, k), g = c.getContext('2d');
+  const c = cropScaled(src, box, k), g = c.getContext('2d', { willReadFrequently: true });
   const img = g.getImageData(0, 0, c.width, c.height), p = img.data, hist = new Array(256).fill(0);
   for (let i = 0; i < p.length; i += 4) hist[Math.round(0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2])]++;
   const total = p.length / 4;
@@ -91,7 +91,7 @@ export function whiteText(src, box, k, bias) {
 
 // Like whiteText but keeps coloured text too (red/green/orange prices). Crop must exclude the gold kama icon.
 export function brightText(src, box, k, frac) {
-  const c = cropScaled(src, box, k), g = c.getContext('2d');
+  const c = cropScaled(src, box, k), g = c.getContext('2d', { willReadFrequently: true });
   const img = g.getImageData(0, 0, c.width, c.height), p = img.data;
   let mx = 0; for (let i = 0; i < p.length; i += 4) mx = Math.max(mx, 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2]);
   const thr = Math.max(110, mx * (frac || 0.62));
@@ -105,7 +105,7 @@ export function brightText(src, box, k, frac) {
 
 // Greyscale + contrast + invert: for coloured chat text.
 export function greyInvert(src, box, k) {
-  const c = cropScaled(src, box, k), g = c.getContext('2d');
+  const c = cropScaled(src, box, k), g = c.getContext('2d', { willReadFrequently: true });
   const img = g.getImageData(0, 0, c.width, c.height), p = img.data;
   let mn = 255, mx = 0;
   for (let i = 0; i < p.length; i += 4) { const v = 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2]; p[i] = v; if (v < mn) mn = v; if (v > mx) mx = v; }
@@ -123,7 +123,7 @@ export function cropBox(frame, frac) {
 export function icon(frame, box) {
   if (box.w < 6 || box.h < 6) return null;
   const c = document.createElement('canvas'); c.width = 40; c.height = 40;
-  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
+  const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high';
   g.drawImage(frame, box.x, box.y, box.w, box.h, 0, 0, 40, 40);
   return c.toDataURL('image/jpeg', 0.82);
 }
@@ -155,7 +155,7 @@ async function readMarketRows(frame, box, L, typeNames) {
 function stack(crops) {
   const GAP = 28, w = Math.max(...crops.map((c) => c.width)), h = crops.reduce((t, c) => t + c.height + GAP, GAP);
   const c = document.createElement('canvas'); c.width = w + 2 * GAP; c.height = h;
-  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  const g = c.getContext('2d', { willReadFrequently: true }); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
   const bands = []; let y = GAP;
   crops.forEach((cr) => { g.drawImage(cr, GAP, y); bands.push([y, y + cr.height]); y += cr.height + GAP; });
   return { canvas: c, bands };
@@ -258,7 +258,7 @@ export function fingerprint(frame, box) {
   const w = Math.max(4, Math.min(frame.width - x, Math.round(box.w))), h = Math.max(4, Math.min(frame.height - y, Math.round(box.h)));
   const FW = 192, FH = Math.max(8, Math.min(48, Math.round(FW * h / w)));
   const c = document.createElement('canvas'); c.width = FW; c.height = FH;
-  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(frame, x, y, w, h, 0, 0, FW, FH);
+  const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high'; g.drawImage(frame, x, y, w, h, 0, 0, FW, FH);
   const p = g.getImageData(0, 0, FW, FH).data, v = new Uint8Array(FW * FH);
   for (let i = 0; i < v.length; i++) v[i] = 0.3 * p[i * 4] + 0.59 * p[i * 4 + 1] + 0.11 * p[i * 4 + 2];
   return { v, w: FW, h: FH };
@@ -296,14 +296,14 @@ export async function readNumber(frame, frac) {
 export function frameFromVideo(video) {
   if (!video || !video.videoWidth) return null;
   const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
-  c.getContext('2d').drawImage(video, 0, 0);
+  c.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0);
   return c;
 }
 
 export function frameFromUrl(url) {
   return new Promise((res, rej) => {
     const im = new Image();
-    im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d').drawImage(im, 0, 0); res(c); };
+    im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d', { willReadFrequently: true }).drawImage(im, 0, 0); res(c); };
     im.onerror = () => rej(new Error('Could not read the image.'));
     im.src = url;
   });
@@ -311,7 +311,7 @@ export function frameFromUrl(url) {
 
 // Number of dark glyphs in a black-on-white crop (flood fill). A round, hollow blob at the end is the coin icon and is not counted.
 export function countGlyphs(canvas) {
-  const w = canvas.width, h = canvas.height, data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const w = canvas.width, h = canvas.height, data = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
   const dark = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) dark[i] = data[i * 4] < 128 ? 1 : 0;
   const seen = new Uint8Array(w * h), comps = [];
@@ -350,7 +350,7 @@ async function sparseWords(c, k) {
     const own0 = Math.round(W * i / n), own1 = Math.round(W * (i + 1) / n);
     const x0 = Math.max(0, own0 - ov), x1 = Math.min(W, own1 + ov);
     const t = document.createElement('canvas'); t.width = x1 - x0; t.height = H;
-    t.getContext('2d').drawImage(c, x0, 0, x1 - x0, H, 0, 0, x1 - x0, H);
+    t.getContext('2d', { willReadFrequently: true }).drawImage(c, x0, 0, x1 - x0, H, 0, 0, x1 - x0, H);
     return toWords(await recognize(t, { psm: 11 }), x0).filter((w) => { const cx = (w.x0 + w.x1) / 2 * k; return cx >= own0 && (cx < own1 || i === n - 1); });
   }));
   return parts.flat();
@@ -362,7 +362,7 @@ export async function autoDetect(frame, kOverride) {
   const k = kOverride || Math.min(2, Math.max(1.4, 1500 / frame.height));
   const c = document.createElement('canvas');
   c.width = Math.round(frame.width * k); c.height = Math.round(frame.height * k);
-  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(frame, 0, 0, c.width, c.height);
+  const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high'; g.drawImage(frame, 0, 0, c.width, c.height);
   const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
   let mn = 255, mx = 0;
   for (let i = 0; i < p.length; i += 4) { const v = 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2]; p[i] = v; if (v < mn) mn = v; if (v > mx) mx = v; }
@@ -443,7 +443,7 @@ export function forgetProfile() { lastProfile = null; }
 // Tiny greyscale fingerprint used to tell "the screen changed" from "same screen".
 export function signature(frame) {
   const c = document.createElement('canvas'); c.width = 48; c.height = 27;
-  const g = c.getContext('2d'); g.drawImage(frame, 0, 0, 48, 27);
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(frame, 0, 0, 48, 27);
   const p = g.getImageData(0, 0, 48, 27).data, out = new Uint8Array(48 * 27);
   for (let i = 0; i < out.length; i++) out[i] = 0.3 * p[i * 4] + 0.59 * p[i * 4 + 1] + 0.11 * p[i * 4 + 2];
   return out;
@@ -460,7 +460,7 @@ export function cropJpeg(frame, box, maxW, q) {
   const w = Math.max(8, Math.min(frame.width - x, Math.round(box.w))), h = Math.max(8, Math.min(frame.height - y, Math.round(box.h)));
   const k = Math.min(1, maxW / w);
   const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
-  c.getContext('2d').drawImage(frame, x, y, w, h, 0, 0, c.width, c.height);
+  c.getContext('2d', { willReadFrequently: true }).drawImage(frame, x, y, w, h, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', q);
 }
 export const cacheStats = () => ({ n: rowCache.rows.length, key: rowCache.key });

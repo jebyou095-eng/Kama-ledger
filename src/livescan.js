@@ -74,11 +74,11 @@ export function createLiveScan(getEnv) {
         } else if (k === 'popup') {
           var pl = await scan.readText(frame, prof.popup, 'white');
           var pop = parsePopup(pl), lots = parseLots(pl.join('\n'), pop.avg);
-          try { var rr = await readLotRows(frame, { x: prof.popup.x * frame.width, y: prof.popup.y * frame.height, w: prof.popup.w * frame.width, h: prof.popup.h * frame.height }); Object.keys(rr).forEach(function (q) { lots[q] = rr[q]; }); } catch (e) { /* the whole-popup read stays */ }
+          var lotDiag = null; try { var rr = await readLotRows(frame, { x: prof.popup.x * frame.width, y: prof.popup.y * frame.height, w: prof.popup.w * frame.width, h: prof.popup.h * frame.height }); lotDiag = rr.diag; Object.keys(rr.lots).forEach(function (q) { lots[q] = rr.lots[q]; }); } catch (e) { lotDiag = { error: String(e && e.message || e) }; /* the whole-popup read stays */ }
           if (!Object.keys(lots).length && !pop.avg) return quick ? null : 'Popup: could not read it';
           window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
           info.popup = { id: pop.name, lots: Object.keys(lots).length };
-          (window.klPopups = window.klPopups || []).push({ lines: pl, pop: pop, lots: lots, offers: lots.offers || null }); window.klPopups = window.klPopups.slice(-6);
+          (window.klPopups = window.klPopups || []).push({ lines: pl, pop: pop, lots: lots, offers: lots.offers || null, lotRows: lotDiag, crop: (function () { try { var pk0 = frame.width / 1534, b0 = (prof._raw && prof._raw.popup) || prof.popup; return scan.cropJpeg(frame, { x: Math.max(0, b0.x * frame.width - 77 * pk0), y: Math.max(0, b0.y * frame.height - 40 * pk0), w: b0.w * frame.width + 107 * pk0, h: b0.h * frame.height + 52 * pk0 }, 560, 0.7); } catch (e) { return null; } })() }); window.klPopups = window.klPopups.slice(-6).map(function (p, i, a) { if (i < a.length - 3 && p.crop) p.crop = null; return p; });   // pictures only for the last three
           var ps = P ? snapItem(P, pop.name, pop.level, pop.type) : null;
           // name line missing or buried in noise: look for the name in any title line, then for the one item whose price is this average
           if (P && !(ps && ps.score >= 0.9)) ps = bestNameInLines(pl, 0.85) || ps;

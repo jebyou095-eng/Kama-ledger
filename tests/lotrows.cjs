@@ -6,4 +6,7 @@ const prof=[]; for(let i=0;i<220;i++) prof.push(51); for(const [a,z] of [[10,35]
 const b=f.findBands(prof,6); ok(b.length===4&&b[0][0]===10&&b[3][1]===118,'bands '+JSON.stringify(b));
 ok(f.digits('54 995')===54995,'54 995'); ok(f.digits(' ')===null,'blank'); ok(f.digits('7771\n')===7771,'7771');
 ok(f.vote([890,890,3890])===890,'vote'); ok(f.vote([1,2,3])===null,'no majority'); ok(f.vote([null,7771,7771])===7771,'vote null');
+const lr = fs.readFileSync(__dirname + '/../src/lotrows.js', 'utf8'); const body = lr.slice(lr.indexOf('export async function readLotRows'));
+if ((body.match(/getImageData/g) || []).length !== 1 || /for \(let y[^)]*\)[^{]*\{[^}]*getImageData/.test(body)) { bad++; console.log('FAIL readLotRows must read the strip with ONE getImageData (a read per row made popups take 40 s)'); }
+if (!/willReadFrequently/.test(fs.readFileSync(__dirname + '/../src/scan.js', 'utf8'))) { bad++; console.log('FAIL scan canvases must use willReadFrequently'); }
 console.log(bad?bad+' lotrows failures':'lotrows: ok'); process.exit(bad?1:0);

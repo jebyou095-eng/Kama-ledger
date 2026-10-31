@@ -16,7 +16,7 @@ for (const [kind, png] of files) {
     if (kind === 'popup') {
       const prof = await scan.autoDetect(frame); scan.forgetProfile(); if (!prof.popup) return null; const W = frame.width, H = frame.height;
       const pl = await scan.readText(frame, prof.popup, 'white'), pop = (await import('/src/market.js')).parsePopup(pl), lots = (await import('/src/items.js')).parseLots(pl.join('\n'), pop.avg);
-      const rr = await (await import('/src/lotrows.js')).readLotRows(frame, { x: prof.popup.x * W, y: prof.popup.y * H, w: prof.popup.w * W, h: prof.popup.h * H });
+      const rr = (await (await import('/src/lotrows.js')).readLotRows(frame, { x: prof.popup.x * W, y: prof.popup.y * H, w: prof.popup.w * W, h: prof.popup.h * H })).lots;
       Object.keys(rr).forEach((q) => { lots[q] = rr[q]; }); return { name: pop.name, avg: pop.avg, lots };
     }
     return null;

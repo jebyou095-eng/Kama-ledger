@@ -6,6 +6,9 @@ export const PREMIUM = 1.5;   // assumption, not game data: a perfect roll asks 
 export const TIER_LABEL = { low: 'low', medium: 'medium', high: 'high', top: 'top notch' };
 
 const same = (a, b) => a === b || similarity(a, b) >= 0.8;
+// OCR leaves icon noise after a label ("Dommages Air ce") and the game names are singular ("Dommage Air"): compare the label as is and cleaned
+const tidy = (k) => String(k || '').split(' ').filter((w, i, a) => !(i > 0 && w.length <= 2 && i === a.length - 1) && w.length > 0).map((w) => (w.length > 4 ? w.replace(/s$/, '') : w)).join(' ');
+const sameStat = (a, b) => same(a, b) || same(tidy(a), tidy(b));
 
 // stats: parsed tooltip stats [{ key, label, value }]; effects: the item's [[effectId, min, max]]; names: { effectId: label }.
 // Each stat is placed between the item's minimum (0) and maximum (1); the roll is the average. Stats the item does not have are exo/forged extras.
@@ -14,7 +17,7 @@ export function rollOf(stats, effects, names) {
   const pos = [], exo = []; let atMax = 0, ranged = 0;
   (stats || []).forEach((s) => {
     if (!(s.value > 0)) return;
-    const e = have.find((h) => same(h.key, s.key));
+    const e = have.find((h) => sameStat(h.key, s.key));
     if (!e) { exo.push(s.label); return; }
     if (e.max <= e.min) return;   // fixed stats (1 PA) say nothing about the roll
     const p = Math.max(0, Math.min(1, (s.value - e.min) / (e.max - e.min)));

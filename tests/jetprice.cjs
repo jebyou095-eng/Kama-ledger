@@ -13,6 +13,9 @@
   const hi = k.rollOf(st([['Vitalité', 290], ['Force', 55], ['Intelligence', 28], ['Prospection', 14]]), eff, names); assert.equal(hi.tier, 'high');
   assert.deepEqual(k.rollOf(st([['Critique', 2], ['Vitalité', 300]]), eff, names).exo, ['Critique'], 'a stat the item lacks is an exo/forged extra');
   assert.equal(k.rollOf(st([['Vitalité', 0]]), eff, names), null);
+  // real OCR noise seen on the player's PC: trailing "ce", plural "Dommages"
+  const e2 = [[428, 2, 5], [125, 10, 20]], n2 = { 428: 'Dommage Air', 125: 'Vitalité' };
+  const noisy = k.rollOf(st([['Dommages Air ce', 5], ['Vitalité', 20]]), e2, n2); assert.deepEqual(noisy.exo, [], 'noise after a label is not an exo stat'); assert.equal(noisy.pct, 100);
   // price: floor at 0%, median at 50%, 1.5x median at 100%; never invents a number without the pieces
   assert.equal(k.askPrice(0, 2e6, 3e6).v, 2e6); assert.equal(k.askPrice(50, 2e6, 3e6).v, 3e6); assert.equal(k.askPrice(100, 2e6, 3e6).v, 4.5e6); assert.equal(k.askPrice(75, 2e6, 3e6).v, 3.75e6);
   assert.equal(k.askPrice(80, null, 3e6).v > 3e6, true); assert.equal(k.askPrice(20, null, 3e6).v, null); assert.equal(k.askPrice(20, null, null), null);
