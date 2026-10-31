@@ -55,6 +55,24 @@ export async function initTestLib(env) {
     });
   }
 
+  // A frame from the shared game window (or a loaded screenshot) goes into the library with guessed tags.
+  const MAX = 200, recent = [];
+  async function addFrame(frame, source) {
+    if (!frame || !frame.width) return false;
+    const sig = env.scan.signature(frame);
+    if (recent.some((s) => env.scan.sigDiff(s, sig) < 3)) return false;   // the same screen again (hotkey pressed twice, live repeats)
+    if ((await all()).length >= MAX) { note('The library is full (' + MAX + '). Download it and press Remove all.'); return false; }
+    const blob = await new Promise((res) => frame.toBlob(res, 'image/png')); if (!blob) return false;
+    const g = await guess(blob);
+    await run(db, 'readwrite', (st) => st.add({ tags: g.tags, suggested: g.tags, w: g.w, h: g.h, name: (source || 'capture') + '-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png', note: '', blob, at: Date.now() }));
+    recent.push(sig); if (recent.length > 8) recent.shift();
+    note('Saved to the library (' + g.tags.map((t) => (CATS.find((c) => c.id === t) || {}).label).join(' + ') + '). Check the tags.'); render(); return true;
+  }
+  const AUTO = 'kl-testlib-auto';
+  const autoBox = $('tl-auto'); let autoOn = false; try { autoOn = localStorage.getItem(AUTO) === '1'; } catch (e) { autoOn = false; }
+  if (autoBox) { autoBox.checked = autoOn; autoBox.addEventListener('change', () => { autoOn = autoBox.checked; try { localStorage.setItem(AUTO, autoOn ? '1' : '0'); } catch (e) { /* ignore */ } note(autoOn ? 'Every scan you make will also be saved here.' : 'Automatic saving is off.'); }); }
+  const nowBtn = $('tl-now'); if (nowBtn) nowBtn.addEventListener('click', async () => { const f = env.frame && env.frame(); if (!f) { note('Nothing to save: share the game window first.'); return; } await addFrame(f, 'capture'); });
+
   async function guess(blob) {
     const url = URL.createObjectURL(blob);
     try {
@@ -96,4 +114,5 @@ export async function initTestLib(env) {
     await run(db, 'readwrite', (st) => st.clear()); note('Library emptied.'); render();
   });
   render();
+  return { addFrame, auto: () => autoOn };
 }

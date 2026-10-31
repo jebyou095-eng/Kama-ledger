@@ -18,5 +18,8 @@
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tl-')), z = path.join(dir, 't.zip'); fs.writeFileSync(z, k.buildZip([{ name: 'popup/001.png', data: a }, { name: 'manifest.json', data: b }]));
   execFileSync('unzip', ['-q', '-o', z, '-d', path.join(dir, 'o')]);
   assert.deepEqual([...fs.readFileSync(path.join(dir, 'o/popup/001.png'))], [1, 2, 3, 4, 5]); assert.equal(fs.readFileSync(path.join(dir, 'o/manifest.json'), 'utf8'), '{"ok":true}');
+  const src = (f) => fs.readFileSync(__dirname + '/../src/' + f, 'utf8');
+  assert.ok(/klTestLib\.auto\(\)\) window\.klTestLib\.addFrame\(frame, 'scan'\)/.test(src('main.js')), 'scans feed the library when automatic saving is on');
+  assert.ok(/id="tl-now"/.test(fs.readFileSync(__dirname + '/../index.html', 'utf8')) && /id="tl-auto"/.test(fs.readFileSync(__dirname + '/../index.html', 'utf8')), 'both buttons exist');
   console.log('testlib checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

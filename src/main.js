@@ -1154,7 +1154,11 @@ function sessEvent(ev) { return checks.sessEvent(ev); }
 
 /* ---- live scan: moved to livescan.js (wired here) ---- */
 var live = createLiveScan(function () { return scanEnv; });
-function scanFrame(frame) { return live.scanFrame(frame); }
+function scanFrame(frame) {
+  // with "Save every scan automatically" on, the picture that is about to be read also goes into the test library (the same screen twice is skipped)
+  try { if (window.klTestLib && window.klTestLib.auto()) window.klTestLib.addFrame(frame, 'scan'); } catch (e) { /* optional */ }
+  return live.scanFrame(frame);
+}
 live.init();
 renderProfile();
 /* ---- capture hotkey (desktop app) ---- */
@@ -1290,4 +1294,4 @@ kamoRef = initKamo({
 });
 window.klKamo = kamoRef;
 try { window.klStatus = createStatus(window.kamaDesktopCapture || null, APP_BUILD); } catch (e) { /* the status file is optional */ }
-try { initTestLib({ $: $, scan: scan, build: APP_BUILD }); } catch (e) { /* the test library is optional */ }
+initTestLib({ $: $, scan: scan, build: APP_BUILD, frame: function () { return stream ? scan.frameFromVideo($('vid')) : stillFrame; } }).then(function (api) { window.klTestLib = api || null; }).catch(function () { /* the test library is optional */ });
