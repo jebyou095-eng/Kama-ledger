@@ -20,3 +20,15 @@ Offline Dofus market/profit tracker (Electron + Vite). Owner: Phenix (Youssef). 
 4. Market row accounting (detected vs kept rows); bad prices already in history (cleanup tool needs user confirmation).
 5. Unverified on the real PC: overlay excluded from capture, encrypted key flow, Kamo Test with Groq/Gemini.
 6. Assumptions to tune from real data: PREMIUM 1.5x median for perfect jets; easy/hard sell thresholds (10/3/1 sold per day).
+
+## Decisions and intent (from the build conversation)
+- Goal: Kamo (coin-shaped helper) is a real assistant for Phenix's Dofus market. He wants a short loop: Kamo knows the technicalities and says what is missing; Claude reads the status instead of him sending files.
+- Kamo answers general questions too (not only app topics). Cloud cascade Groq -> SambaNova -> Gemini (default gemini-2.5-flash). Never invent prices. Replies 1-3 sentences.
+- Kamo never touches the game. Claude never clicks in the game. Keys stay local and never appear in status files.
+- Honesty over guessing: unsure prices stay "unsure"/need review, never silently filled. Failing screenshots stay in tests/screens as the most useful kind; never delete one to raise the score.
+- Skills are data (src/skills/skills.json) with audited compute functions; the test requires examples that reproduce exact replies.
+- Prices on the median can belong to items with good jets, so Kamo must say (a) is the item easy or hard to sell, and (b) a convenient asking price for the user's own jet tier (low <30%, medium <60%, high <85%, top >=85% of the stat range), not the median. Floor (low roll) -> median (50%) -> PREMIUM 1.5x median (perfect roll). PREMIUM and the easy/hard thresholds (10/3/1 sold per day) are my assumptions: tune from real market data.
+- Chart reading is self-checked: the yellow average line must match the stats line (<1%) before a value counts as sure.
+- Test library (in app): screenshots carry several tags (e.g. popup + market list); "Save screen now" and automatic saving of every scan; export as zip. Phenix gathers many screenshots; Claude reads true values and asks only when Kamo disagrees.
+- Free-plan limits are gone (Premium since 2026-10-31). Computer control, if used, only on the Kama Ledger window, never the game.
+- Style with Phenix: direct, brief, he corrects quickly; state your interpretation before acting on ambiguous requests.
