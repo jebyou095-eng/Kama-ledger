@@ -74,7 +74,7 @@ export function createLiveScan(getEnv) {
         } else if (k === 'popup') {
           var pl = await scan.readText(frame, prof.popup, 'white');
           var pop = parsePopup(pl), lots = parseLots(pl.join('\n'), pop.avg);
-          var lotDiag = null; try { var rr = await readLotRows(frame, { x: prof.popup.x * frame.width, y: prof.popup.y * frame.height, w: prof.popup.w * frame.width, h: prof.popup.h * frame.height }); lotDiag = rr.diag; Object.keys(rr.lots).forEach(function (q) { lots[q] = rr.lots[q]; }); } catch (e) { lotDiag = { error: String(e && e.message || e) }; /* the whole-popup read stays */ }
+          var lotDiag = null; try { var rr = await readLotRows(frame, { x: prof.popup.x * frame.width, y: prof.popup.y * frame.height, w: prof.popup.w * frame.width, h: prof.popup.h * frame.height }); lotDiag = rr.diag; Object.keys(rr.lots).forEach(function (q) { lots[q] = rr.lots[q]; }); if (rr.offers) { var of = {}; rr.offers.forEach(function (o) { (of[o.size] = of[o.size] || []).push(o.price); }); Object.defineProperty(lots, 'offers', { value: of, enumerable: false }); } } catch (e) { lotDiag = { error: String(e && e.message || e) }; /* the whole-popup read stays */ }
           if (!Object.keys(lots).length && !pop.avg) return quick ? null : 'Popup: could not read it';
           window.klLastScan = Object.assign(window.klLastScan || {}, { popup: { lines: pl, pop: pop, lots: lots } });
           info.popup = { id: pop.name, lots: Object.keys(lots).length };
